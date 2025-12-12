@@ -10,7 +10,6 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.client.RestClientException;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import javax.naming.AuthenticationException;
 import java.nio.file.AccessDeniedException;
@@ -155,7 +154,7 @@ public class GlobalExceptionHandler {
     }
 
     // 8. Lỗi khi call AI server / Google Fit (WebClient / RestTemplate)
-    @ExceptionHandler({WebClientResponseException.class, RestClientException.class})
+    @ExceptionHandler({RestClientException.class, RestClientException.class})
     public ResponseEntity<ErrorResponse> handleExternalService(Exception ex,
                                                                HttpServletRequest request) {
 
