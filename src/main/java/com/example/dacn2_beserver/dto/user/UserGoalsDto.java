@@ -1,4 +1,4 @@
-package com.example.dacn2_beserver.model.user;
+package com.example.dacn2_beserver.dto.user;
 
 import lombok.*;
 
@@ -7,11 +7,11 @@ import lombok.*;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class UserGoals {
+public class UserGoalsDto {
     private Integer dailySteps;
     private Integer dailyCaloriesIn;
     private Integer dailyCaloriesOut;
     private Integer dailyWaterMl;
 
-    private Double targetWeightKg; // optional
+    private Double targetWeightKg;
 }

@@ -1,33 +1,53 @@
 package com.example.dacn2_beserver.model.user;
 
+import com.example.dacn2_beserver.model.enums.Role;
+import com.example.dacn2_beserver.model.enums.UserStatus;
 import lombok.*;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.Instant;
-import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 
-@Document(collection = "users")
-@Data
+@Document("users")
+@Getter
+@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class User {
+
     @Id
     private String id;
 
-    private String email;
+    @Indexed(unique = true, sparse = true)
     private String username;
-    private String passwordHash;
 
-    private AuthProvider provider;
-    private List<String> roles;
+    @Indexed(unique = true, sparse = true)
+    private String primaryEmail;
 
     private UserProfile profile;
-    private UserGoals goals;
-    private UserSettings settings;
-    private ConnectedServices connectedServices;
 
-    private Instant createdAt;
-    private Instant updatedAt;
+    @Builder.Default
+    private UserSettings settings = UserSettings.builder().build();
+
+    @Builder.Default
+    private UserGoals goals = UserGoals.builder().build();
+
+    @Builder.Default
+    private UserStatus status = UserStatus.ACTIVE;
+
+    @Builder.Default
+    private Set<Role> roles = new HashSet<>(Set.of(Role.USER));
+
+    private Instant lastLoginAt;
+
+    @Builder.Default
+    private Instant createdAt = Instant.now();
+    @Builder.Default
+    private Instant updatedAt = Instant.now();
+
+    private Instant deletedAt;
 }

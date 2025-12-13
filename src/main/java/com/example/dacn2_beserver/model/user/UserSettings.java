@@ -1,13 +1,21 @@
 package com.example.dacn2_beserver.model.user;
+
+import com.example.dacn2_beserver.model.enums.UnitSystem;
 import lombok.*;
 
-@Data
+@Getter
+@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class UserSettings {
+    @Builder.Default
+    private UnitSystem unitSystem = UnitSystem.METRIC;
+    @Builder.Default
+    private String language = "vi";
+    @Builder.Default
+    private String timezone = "Asia/Ho_Chi_Minh";
 
-    private UnitSystem unitSystem;
-    private String language;
-    private NotificationSettings notifications;
+    @Builder.Default
+    private NotificationSettings notifications = NotificationSettings.builder().build();
 }
