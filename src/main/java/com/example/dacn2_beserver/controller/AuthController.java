@@ -4,6 +4,7 @@ import com.example.dacn2_beserver.dto.auth.*;
 import com.example.dacn2_beserver.dto.user.UserResponse;
 import com.example.dacn2_beserver.security.AuthPrincipal;
 import com.example.dacn2_beserver.service.auth.AuthService;
+import com.example.dacn2_beserver.service.auth.GoogleAuthService;
 import com.example.dacn2_beserver.service.auth.OtpAuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,7 @@ public class AuthController {
 
     private final OtpAuthService otpAuthService;
     private final AuthService authService;
+    private final GoogleAuthService googleAuthService;
 
     @PostMapping("/otp/request")
     public OtpRequestCreateResponse requestOtp(@Valid @RequestBody OtpRequestCreateRequest req) {
@@ -41,6 +43,16 @@ public class AuthController {
     @GetMapping("/me")
     public UserResponse me(@AuthenticationPrincipal AuthPrincipal principal) {
         return authService.me(principal);
+    }
+    
+    @PostMapping("/google")
+    public AuthResultResponse google(@Valid @RequestBody GoogleVerifyRequest req) {
+        return googleAuthService.loginWithGoogle(req);
+    }
+
+    @PostMapping("/google/link/confirm")
+    public AuthResultResponse confirmGoogleLink(@Valid @RequestBody LinkConfirmRequest req) {
+        return googleAuthService.confirmLink(req);
     }
 
 }

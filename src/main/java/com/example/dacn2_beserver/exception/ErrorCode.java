@@ -37,6 +37,12 @@ public enum ErrorCode {
     OTP_LOCKED(HttpStatus.BAD_REQUEST, "OTP_LOCKED", "OTP is locked due to too many attempts"),
     OTP_TOO_SOON(HttpStatus.TOO_MANY_REQUESTS, "OTP_TOO_SOON", "Please wait before requesting another OTP"),
 
+    // ==== GOOGLE AUTH ERRORS ====
+    GOOGLE_ID_TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "GOOGLE_ID_TOKEN_INVALID", "Google id_token is invalid"),
+    LINK_TICKET_INVALID(HttpStatus.BAD_REQUEST, "LINK_TICKET_INVALID", "Link ticket is invalid"),
+    LINK_TICKET_EXPIRED(HttpStatus.BAD_REQUEST, "LINK_TICKET_EXPIRED", "Link ticket is expired"),
+    GOOGLE_ALREADY_LINKED(HttpStatus.CONFLICT, "GOOGLE_ALREADY_LINKED", "This Google account is already linked"),
+
     ;
 
     private final HttpStatus httpStatus;
