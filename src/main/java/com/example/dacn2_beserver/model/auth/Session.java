@@ -33,7 +33,7 @@ public class Session {
     @Builder.Default
     private SessionStatus status = SessionStatus.ACTIVE;
 
-    @Indexed()
+    @Indexed(name = "session_expires_ttl", expireAfter = "0s")
     private Instant expiresAt;
 
     private Instant revokedAt;

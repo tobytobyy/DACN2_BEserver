@@ -31,8 +31,9 @@ public class LinkTicket {
     @Builder.Default
     private LinkTicketStatus status = LinkTicketStatus.PENDING;
 
-    @Indexed()
-    private Instant expiresAt;
+    @Indexed(name = "link_ticket_expires_ttl", expireAfter = "0s")
+    @Builder.Default
+    private Instant expiresAt = Instant.now().plusSeconds(10 * 60);
 
     @Builder.Default
     private Instant createdAt = Instant.now();

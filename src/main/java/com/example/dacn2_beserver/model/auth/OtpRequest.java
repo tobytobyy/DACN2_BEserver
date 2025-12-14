@@ -37,8 +37,9 @@ public class OtpRequest {
     @Builder.Default
     private OtpStatus status = OtpStatus.PENDING;
 
-    @Indexed()
-    private Instant expiresAt;
+    @Indexed(name = "otp_expires_ttl", expireAfter = "0s")
+    @Builder.Default
+    private Instant expiresAt = Instant.now().plusSeconds(5 * 60);
 
     private Instant verifiedAt;
     private Instant lockedAt;
