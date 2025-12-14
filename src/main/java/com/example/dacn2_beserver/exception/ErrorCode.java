@@ -30,6 +30,13 @@ public enum ErrorCode {
     AI_SERVICE_ERROR(HttpStatus.BAD_GATEWAY, "AI_SERVICE_ERROR", "AI service error"),
     GOOGLE_FIT_ERROR(HttpStatus.BAD_GATEWAY, "GOOGLE_FIT_ERROR", "Google Fit service error"),
     APPLE_HEALTH_ERROR(HttpStatus.BAD_GATEWAY, "APPLE_HEALTH_ERROR", "Apple Health service error"),
+
+    // ==== OTP ERRORS ====
+    OTP_INVALID(HttpStatus.BAD_REQUEST, "OTP_INVALID", "OTP code is invalid"),
+    OTP_EXPIRED(HttpStatus.BAD_REQUEST, "OTP_EXPIRED", "OTP code is expired"),
+    OTP_LOCKED(HttpStatus.BAD_REQUEST, "OTP_LOCKED", "OTP is locked due to too many attempts"),
+    OTP_TOO_SOON(HttpStatus.TOO_MANY_REQUESTS, "OTP_TOO_SOON", "Please wait before requesting another OTP"),
+
     ;
 
     private final HttpStatus httpStatus;

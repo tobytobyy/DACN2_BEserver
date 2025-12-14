@@ -24,15 +24,17 @@ public class UserIdentity {
     @Indexed
     private String userId;
 
+    @Indexed
     private IdentityProvider provider;
 
     private String identifier;   // raw (email/phone/sub)
-    private String normalized;   // email lowercase, phone E.164, google sub 그대로
+    private String normalized;   // email lowercase, phone E.164, google sub
 
     @Builder.Default
     private boolean verified = false;
 
     // Google-specific (optional)
+    @Indexed(unique = true, sparse = true)
     private String providerAccountId; // google sub (nếu bạn muốn tách rõ)
     private String emailAtProvider;   // email Google trả về tại thời điểm login
     private Boolean emailVerifiedAtProvider;
