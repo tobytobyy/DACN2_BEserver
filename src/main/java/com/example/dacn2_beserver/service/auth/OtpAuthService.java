@@ -4,9 +4,9 @@ import com.example.dacn2_beserver.dto.auth.OtpRequestCreateRequest;
 import com.example.dacn2_beserver.dto.auth.OtpRequestCreateResponse;
 import com.example.dacn2_beserver.dto.auth.OtpVerifyRequest;
 import com.example.dacn2_beserver.dto.auth.OtpVerifyResponse;
-import com.example.dacn2_beserver.exception.ApiException;
-import com.example.dacn2_beserver.exception.BadRequestException;
-import com.example.dacn2_beserver.exception.ErrorCode;
+import com.example.dacn2_beserver.exception.OTPExpiredException;
+import com.example.dacn2_beserver.exception.OTPInvalidException;
+import com.example.dacn2_beserver.exception.OTPTooSoonException;
 import com.example.dacn2_beserver.model.auth.OtpRequest;
 import com.example.dacn2_beserver.model.auth.UserIdentity;
 import com.example.dacn2_beserver.model.enums.*;
@@ -50,8 +50,7 @@ public class OtpAuthService {
         ).ifPresent(last -> {
             if (last.getCreatedAt() != null &&
                     last.getCreatedAt().isAfter(Instant.now().minusSeconds(MIN_REQUEST_INTERVAL_SECONDS))) {
-                throw new ApiException(ErrorCode.BAD_REQUEST, "OTP requested too frequently");
-                // nếu bạn đã thêm ErrorCode.OTP_TOO_SOON thì dùng OTP_TOO_SOON
+                throw new OTPTooSoonException("OTP requested too soon");
             }
         });
 
@@ -98,7 +97,7 @@ public class OtpAuthService {
 
         OtpRequest otp = pickLatest(candidatesEmail, candidatesPhone);
         if (otp == null) {
-            throw new ApiException(ErrorCode.BAD_REQUEST, "OTP not found or expired");
+            throw new OTPExpiredException("OTP expired");
             // nếu bạn thêm ErrorCode.OTP_EXPIRED thì dùng OTP_EXPIRED
         }
 
@@ -111,7 +110,7 @@ public class OtpAuthService {
             }
             otpRequestRepository.save(otp);
 
-            throw new BadRequestException("OTP code is invalid");
+            throw new OTPInvalidException("OTP code invalid");
             // nếu bạn thêm ErrorCode.OTP_INVALID thì dùng OTP_INVALID
         }
 

@@ -1,5 +1,7 @@
 package com.example.dacn2_beserver.service.auth;
 
+import com.example.dacn2_beserver.exception.InvalidTokenException;
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
@@ -40,5 +42,25 @@ public class JwtService {
 
     public long getExpirationSeconds() {
         return expirationMs / 1000L;
+    }
+
+    public ParsedToken parseAndValidate(String jwt) {
+        try {
+            Claims claims = Jwts.parserBuilder()
+                    .setSigningKey(key)
+                    .build()
+                    .parseClaimsJws(jwt)
+                    .getBody();
+
+            String userId = claims.getSubject();
+            String sid = claims.get("sid", String.class);
+            if (userId == null || sid == null) throw new InvalidTokenException();
+            return new ParsedToken(userId, sid);
+        } catch (Exception e) {
+            throw new InvalidTokenException();
+        }
+    }
+
+    public record ParsedToken(String userId, String sessionId) {
     }
 }

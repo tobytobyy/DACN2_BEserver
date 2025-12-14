@@ -13,6 +13,18 @@ public interface SessionRepository extends MongoRepository<Session, String> {
 
     Optional<Session> findByIdAndUserId(String id, String userId);
 
+    Optional<Session> findByRefreshTokenHashAndStatusAndExpiresAtAfter(
+            String refreshTokenHash,
+            SessionStatus status,
+            Instant now
+    );
+
+    Optional<Session> findByIdAndStatusAndExpiresAtAfter(
+            String id,
+            SessionStatus status,
+            Instant now
+    );
+
     List<Session> findAllByUserIdAndExpiresAtAfter(String userId, Instant now);
 
     void deleteAllByUserId(String userId);

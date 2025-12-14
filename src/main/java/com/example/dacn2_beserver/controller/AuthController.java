@@ -1,16 +1,14 @@
 package com.example.dacn2_beserver.controller;
 
-import com.example.dacn2_beserver.dto.auth.OtpRequestCreateRequest;
-import com.example.dacn2_beserver.dto.auth.OtpRequestCreateResponse;
-import com.example.dacn2_beserver.dto.auth.OtpVerifyRequest;
-import com.example.dacn2_beserver.dto.auth.OtpVerifyResponse;
+import com.example.dacn2_beserver.dto.auth.*;
+import com.example.dacn2_beserver.dto.user.UserResponse;
+import com.example.dacn2_beserver.security.AuthPrincipal;
+import com.example.dacn2_beserver.service.auth.AuthService;
 import com.example.dacn2_beserver.service.auth.OtpAuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/auth")
@@ -18,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final OtpAuthService otpAuthService;
+    private final AuthService authService;
 
     @PostMapping("/otp/request")
     public OtpRequestCreateResponse requestOtp(@Valid @RequestBody OtpRequestCreateRequest req) {
@@ -28,4 +27,20 @@ public class AuthController {
     public OtpVerifyResponse verifyOtp(@Valid @RequestBody OtpVerifyRequest req) {
         return otpAuthService.verifyOtp(req);
     }
+
+    @PostMapping("/refresh")
+    public AuthTokensResponse refresh(@Valid @RequestBody RefreshTokenRequest req) {
+        return authService.refresh(req.getRefreshToken()); // DTO đã có :contentReference[oaicite:12]{index=12}
+    }
+
+    @PostMapping("/logout")
+    public void logout(@AuthenticationPrincipal AuthPrincipal principal) {
+        authService.logout(principal);
+    }
+
+    @GetMapping("/me")
+    public UserResponse me(@AuthenticationPrincipal AuthPrincipal principal) {
+        return authService.me(principal);
+    }
+
 }
