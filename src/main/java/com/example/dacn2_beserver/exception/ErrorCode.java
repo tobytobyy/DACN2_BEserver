@@ -18,6 +18,7 @@ public enum ErrorCode {
 
     CONFLICT(HttpStatus.CONFLICT, "CONFLICT", "Conflict"),
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "EMAIL_ALREADY_EXISTS", "Email already exists"),
+    PHONE_ALREADY_EXISTS(HttpStatus.CONFLICT, "PHONE_ALREADY_EXISTS", "Phone number already exists"),
     USERNAME_ALREADY_EXISTS(HttpStatus.CONFLICT, "USERNAME_ALREADY_EXISTS", "Username already exists"),
 
     // ==== COMMON 5xx ====

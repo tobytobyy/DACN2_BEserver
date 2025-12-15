@@ -25,9 +25,18 @@ public class SecurityConfig {
                 .httpBasic(hb -> hb.disable())
                 .oauth2Login(ol -> ol.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/**").permitAll()
-                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                        .requestMatchers("/favicon.ico").permitAll()
+                        .requestMatchers(
+                                "/auth/otp/**",
+                                "/auth/refresh",
+                                "/auth/google",
+                                "/auth/google/link/**",
+                                "/auth/password/register",
+                                "/auth/password/login",
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html",
+                                "/favicon.ico"
+                        ).permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

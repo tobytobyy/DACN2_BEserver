@@ -1,9 +1,6 @@
 package com.example.dacn2_beserver.service.auth;
 
-import com.example.dacn2_beserver.dto.auth.AuthResultResponse;
-import com.example.dacn2_beserver.dto.auth.AuthTokensResponse;
-import com.example.dacn2_beserver.dto.auth.GoogleVerifyRequest;
-import com.example.dacn2_beserver.dto.auth.LinkConfirmRequest;
+import com.example.dacn2_beserver.dto.auth.*;
 import com.example.dacn2_beserver.dto.user.UserResponse;
 import com.example.dacn2_beserver.exception.GoogleAlreadyLinkedException;
 import com.example.dacn2_beserver.exception.LinkTicketExpiredException;
@@ -172,6 +169,23 @@ public class GoogleAuthService {
                 .lastLoginAt(u.getLastLoginAt())
                 .createdAt(u.getCreatedAt())
                 .updatedAt(u.getUpdatedAt())
+                .build();
+    }
+
+    public AuthResultResponse rejectLink(LinkRejectRequest req) {
+        Instant now = Instant.now();
+
+        LinkTicket t = linkTicketRepository
+                .findByIdAndStatusAndExpiresAtAfter(req.getLinkTicketId(), LinkTicketStatus.PENDING, now)
+                .orElseThrow(() -> new LinkTicketExpiredException(req.getLinkTicketId() + " is expired or invalid"));
+
+        t.setStatus(LinkTicketStatus.REJECTED);
+        t.setRejectedAt(now);
+        linkTicketRepository.save(t);
+
+        return AuthResultResponse.builder()
+                .linkRequired(false)
+                .message("Link rejected")
                 .build();
     }
 }
