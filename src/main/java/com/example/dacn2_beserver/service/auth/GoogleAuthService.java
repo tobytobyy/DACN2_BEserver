@@ -135,7 +135,7 @@ public class GoogleAuthService {
                 .normalized(t.getGoogleSub())
                 .verified(true)
                 .providerAccountId(t.getGoogleSub())
-                .emailAtProvider(t.getGoogleEmail())
+                .emailAtProvider(t.getGoogleEmail() == null ? null : IdentifierNormalizer.normalizeEmail(t.getGoogleEmail()))
                 .emailVerifiedAtProvider(t.getGoogleEmailVerified())
                 .build();
 
