@@ -14,8 +14,10 @@ public class OtpVerifyResponse {
     private String accessToken;
     private String refreshToken;
     private Long expiresInSeconds;
-
-    // ✅ gợi ý UI nếu email này đang có Google account
+    
     private Boolean linkSuggested;
     private String message;
+
+    private Boolean isNewUser;
+    private String displayIdentifier;
 }

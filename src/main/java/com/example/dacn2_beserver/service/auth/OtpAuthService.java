@@ -150,7 +150,10 @@ public class OtpAuthService {
         String normalized = otp.getIdentifierNormalized();
 
         // 1) tìm user theo identity
-        String userId = userIdentityRepository.findByProviderAndNormalized(provider, normalized)
+        var existing = userIdentityRepository.findByProviderAndNormalized(provider, normalized);
+        boolean isNewUser = existing.isEmpty();
+
+        String userId = existing
                 .map(UserIdentity::getUserId)
                 .orElseGet(() -> createUserAndIdentity(provider, otp.getIdentifier(), normalized));
 
@@ -189,6 +192,8 @@ public class OtpAuthService {
                 .expiresInSeconds(jwtService.getExpirationSeconds())
                 .linkSuggested(linkSuggested)
                 .message(message)
+                .isNewUser(isNewUser)
+                .displayIdentifier(otp.getIdentifier()) // raw email/phone FE show
                 .build();
     }
 

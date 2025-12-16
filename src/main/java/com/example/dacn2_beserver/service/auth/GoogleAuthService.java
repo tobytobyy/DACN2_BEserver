@@ -12,6 +12,7 @@ import com.example.dacn2_beserver.model.enums.DevicePlatform;
 import com.example.dacn2_beserver.model.enums.IdentityProvider;
 import com.example.dacn2_beserver.model.enums.LinkTicketStatus;
 import com.example.dacn2_beserver.model.user.User;
+import com.example.dacn2_beserver.model.user.UserProfile;
 import com.example.dacn2_beserver.repository.LinkTicketRepository;
 import com.example.dacn2_beserver.repository.UserIdentityRepository;
 import com.example.dacn2_beserver.repository.UserRepository;
@@ -41,7 +42,7 @@ public class GoogleAuthService {
         // Case A: đã có GOOGLE(sub) -> login
         var existingGoogle = userIdentityRepository.findByProviderAndNormalized(IdentityProvider.GOOGLE, sub);
         if (existingGoogle.isPresent()) {
-            return issueAuth(existingGoogle.get().getUserId(), req.getDeviceId());
+            return issueAuth(existingGoogle.get().getUserId(), req.getDeviceId(), false);
         }
 
         // Case B: chưa có sub, nhưng email match user khác -> tạo LinkTicket
@@ -72,6 +73,12 @@ public class GoogleAuthService {
         // Case C: không match ai -> create user + create GOOGLE identity (+ EMAIL identity nếu có email)
         User u = User.builder().build();
         if (emailNorm != null) u.setPrimaryEmail(emailNorm);
+
+        u.setProfile(UserProfile.builder()
+                .fullName(claims.getName())
+                .avatarUrl(claims.getPicture())
+                .build());
+
         u = userRepository.save(u);
 
         // GOOGLE identity
@@ -101,7 +108,7 @@ public class GoogleAuthService {
             userIdentityRepository.save(emailIdentity);
         }
 
-        return issueAuth(u.getId(), req.getDeviceId());
+        return issueAuth(u.getId(), req.getDeviceId(), true);
     }
 
     public AuthResultResponse confirmLink(AuthPrincipal principal, LinkConfirmRequest req) {
@@ -139,11 +146,11 @@ public class GoogleAuthService {
         t.setConfirmedAt(now);
         linkTicketRepository.save(t);
 
-        return issueAuth(t.getTargetUserId(), req.getDeviceId());
+        return issueAuth(t.getTargetUserId(), req.getDeviceId(), false);
     }
 
-    private AuthResultResponse issueAuth(String userId, String deviceId) {
-        var platform = DevicePlatform.WEB; // giống OTP service :contentReference[oaicite:12]{index=12}
+    private AuthResultResponse issueAuth(String userId, String deviceId, boolean isNewUser) {
+        var platform = DevicePlatform.WEB; // Hoặc có thể detect từ deviceId nếu muốn
         var issued = sessionService.createSession(userId, deviceId, platform);
 
         String accessToken = jwtService.generateAccessToken(userId, issued.session().getId());
@@ -159,6 +166,7 @@ public class GoogleAuthService {
                         .expiresInSeconds(jwtService.getExpirationSeconds())
                         .build())
                 .linkRequired(false)
+                .isNewUser(isNewUser)
                 .build();
     }
 
@@ -167,8 +175,15 @@ public class GoogleAuthService {
                 .id(u.getId())
                 .username(u.getUsername())
                 .primaryEmail(u.getPrimaryEmail())
-                .profile(null)
-                .settings(null)
+                .profile(u.getProfile() == null ? null : com.example.dacn2_beserver.dto.user.UserProfileDto.builder()
+                        .fullName(u.getProfile().getFullName())
+                        .avatarUrl(u.getProfile().getAvatarUrl())
+                        .gender(u.getProfile().getGender() == null ? null : u.getProfile().getGender().name())
+                        // birthYear: nếu bạn muốn convert Date -> year ở đây
+                        .heightCm(u.getProfile().getHeightCm())
+                        .weightKg(u.getProfile().getWeightKg())
+                        .build())
+                .settings(null) // nếu muốn trả settings/goals, map tương tự
                 .goals(null)
                 .status(u.getStatus())
                 .roles(u.getRoles())

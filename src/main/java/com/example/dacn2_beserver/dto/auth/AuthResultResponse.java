@@ -16,4 +16,6 @@ public class AuthResultResponse {
     private Boolean linkRequired;
     private String linkTicketId;
     private String message;
+
+    private Boolean isNewUser;
 }
