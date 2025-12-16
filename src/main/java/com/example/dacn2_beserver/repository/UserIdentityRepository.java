@@ -14,5 +14,7 @@ public interface UserIdentityRepository extends MongoRepository<UserIdentity, St
 
     boolean existsByProviderAndNormalized(IdentityProvider provider, String normalized);
 
+    boolean existsByProviderAndEmailAtProvider(IdentityProvider provider, String emailAtProvider);
+
     void deleteAllByUserId(String userId);
 }

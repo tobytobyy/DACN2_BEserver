@@ -73,7 +73,7 @@ public class OtpAuthService {
                 .expiresAt(Instant.now().plusSeconds(OTP_TTL_SECONDS))
                 .build();
 
-        otpRequestRepository.save(otp);
+        otp = otpRequestRepository.save(otp);
 
         // 4. Send OTP
         otpSender.send(channel, identifier, code);
@@ -161,12 +161,34 @@ public class OtpAuthService {
         // 3) JWT access token
         String accessToken = jwtService.generateAccessToken(userId, issued.session().getId());
 
+        boolean linkSuggested = false;
+        String message = null;
+
+        // Chỉ gợi ý khi OTP là EMAIL
+        if (provider == IdentityProvider.EMAIL) {
+            // user hiện tại đã có GOOGLE identity chưa?
+            boolean userHasGoogle = userIdentityRepository.findAllByUserId(userId).stream()
+                    .anyMatch(i -> i.getProvider() == IdentityProvider.GOOGLE);
+
+            // hệ thống có google account nào từng dùng email này không?
+            // NOTE: normalized đang là email normalize (lowercase)
+            boolean emailHasGoogleAccount = userIdentityRepository
+                    .existsByProviderAndEmailAtProvider(IdentityProvider.GOOGLE, normalized);
+
+            if (!userHasGoogle && emailHasGoogleAccount) {
+                linkSuggested = true;
+                message = "Email này đang có Google account, hãy bấm Continue with Google để link.";
+            }
+        }
+
         return OtpVerifyResponse.builder()
                 .userId(userId)
                 .sessionId(issued.session().getId())
                 .accessToken(accessToken)
                 .refreshToken(issued.refreshTokenPlain())
                 .expiresInSeconds(jwtService.getExpirationSeconds())
+                .linkSuggested(linkSuggested)
+                .message(message)
                 .build();
     }
 

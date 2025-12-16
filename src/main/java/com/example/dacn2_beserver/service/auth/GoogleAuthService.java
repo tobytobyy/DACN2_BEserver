@@ -82,7 +82,7 @@ public class GoogleAuthService {
                 .normalized(sub)
                 .verified(true)
                 .providerAccountId(sub) // optional field, repo có sẵn :contentReference[oaicite:11]{index=11}
-                .emailAtProvider(claims.getEmail())
+                .emailAtProvider(emailNorm)
                 .emailVerifiedAtProvider(claims.getEmailVerified())
                 .build();
         userIdentityRepository.save(googleIdentity);
