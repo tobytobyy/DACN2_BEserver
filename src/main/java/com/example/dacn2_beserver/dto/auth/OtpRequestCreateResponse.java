@@ -8,5 +8,6 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 public class OtpRequestCreateResponse {
+    private String otpRequestId;
     private Long expiresInSeconds;
 }

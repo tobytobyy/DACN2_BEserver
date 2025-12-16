@@ -1,18 +1,32 @@
 package com.example.dacn2_beserver.config;
 
+import com.mongodb.ConnectionString;
+import com.mongodb.MongoClientSettings;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.data.mongodb.core.MongoTemplate;
 
 @Configuration
 public class MongoConfig {
 
+    @Value("${spring.data.mongodb.uri}")
+    private String mongoUri;
+
+    @Value("${spring.data.mongodb.database:#{null}}")
+    private String mongoDatabase;
+
     @Bean
-    public MongoClient mongoClient(@Value("${spring.data.mongodb.uri}") String uri) {
-        return MongoClients.create(uri);
+    @Primary
+    public MongoClient mongoClient() {
+        ConnectionString connString = new ConnectionString(mongoUri);
+        MongoClientSettings settings = MongoClientSettings.builder()
+                .applyConnectionString(connString)
+                .build();
+        return MongoClients.create(settings);
     }
 
     /**

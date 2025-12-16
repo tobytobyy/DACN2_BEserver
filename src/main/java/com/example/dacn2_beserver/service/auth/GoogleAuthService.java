@@ -4,6 +4,7 @@ import com.example.dacn2_beserver.dto.auth.*;
 import com.example.dacn2_beserver.dto.user.UserResponse;
 import com.example.dacn2_beserver.exception.GoogleAlreadyLinkedException;
 import com.example.dacn2_beserver.exception.LinkTicketExpiredException;
+import com.example.dacn2_beserver.exception.UnauthorizedException;
 import com.example.dacn2_beserver.exception.UserNotFoundException;
 import com.example.dacn2_beserver.model.auth.LinkTicket;
 import com.example.dacn2_beserver.model.auth.UserIdentity;
@@ -14,6 +15,7 @@ import com.example.dacn2_beserver.model.user.User;
 import com.example.dacn2_beserver.repository.LinkTicketRepository;
 import com.example.dacn2_beserver.repository.UserIdentityRepository;
 import com.example.dacn2_beserver.repository.UserRepository;
+import com.example.dacn2_beserver.security.AuthPrincipal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -102,12 +104,16 @@ public class GoogleAuthService {
         return issueAuth(u.getId(), req.getDeviceId());
     }
 
-    public AuthResultResponse confirmLink(LinkConfirmRequest req) {
+    public AuthResultResponse confirmLink(AuthPrincipal principal, LinkConfirmRequest req) {
         Instant now = Instant.now();
 
         LinkTicket t = linkTicketRepository
                 .findByIdAndStatusAndExpiresAtAfter(req.getLinkTicketId(), LinkTicketStatus.PENDING, now)
                 .orElseThrow(() -> new LinkTicketExpiredException(req.getLinkTicketId() + " is expired or invalid"));
+
+        if (!principal.userId().equals(t.getTargetUserId())) {
+            throw new UnauthorizedException("You cannot confirm link ticket for another user");
+        }
 
         // Nếu google sub đã linked đâu đó rồi -> conflict
         if (userIdentityRepository.existsByProviderAndNormalized(IdentityProvider.GOOGLE, t.getGoogleSub())) {
@@ -172,12 +178,16 @@ public class GoogleAuthService {
                 .build();
     }
 
-    public AuthResultResponse rejectLink(LinkRejectRequest req) {
+    public AuthResultResponse rejectLink(AuthPrincipal principal, LinkRejectRequest req) {
         Instant now = Instant.now();
 
         LinkTicket t = linkTicketRepository
                 .findByIdAndStatusAndExpiresAtAfter(req.getLinkTicketId(), LinkTicketStatus.PENDING, now)
                 .orElseThrow(() -> new LinkTicketExpiredException(req.getLinkTicketId() + " is expired or invalid"));
+
+        if (!principal.userId().equals(t.getTargetUserId())) {
+            throw new UnauthorizedException("You cannot reject link ticket for another user");
+        }
 
         t.setStatus(LinkTicketStatus.REJECTED);
         t.setRejectedAt(now);

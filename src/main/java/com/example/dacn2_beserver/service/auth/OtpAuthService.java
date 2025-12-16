@@ -4,9 +4,7 @@ import com.example.dacn2_beserver.dto.auth.OtpRequestCreateRequest;
 import com.example.dacn2_beserver.dto.auth.OtpRequestCreateResponse;
 import com.example.dacn2_beserver.dto.auth.OtpVerifyRequest;
 import com.example.dacn2_beserver.dto.auth.OtpVerifyResponse;
-import com.example.dacn2_beserver.exception.OTPExpiredException;
-import com.example.dacn2_beserver.exception.OTPInvalidException;
-import com.example.dacn2_beserver.exception.OTPTooSoonException;
+import com.example.dacn2_beserver.exception.*;
 import com.example.dacn2_beserver.model.auth.OtpRequest;
 import com.example.dacn2_beserver.model.auth.UserIdentity;
 import com.example.dacn2_beserver.model.enums.*;
@@ -18,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -39,12 +38,17 @@ public class OtpAuthService {
         OtpChannel channel = req.getChannel();
         String identifier = req.getIdentifier();
 
+        // 1. Validate
+        if (channel == null) {
+            throw new ApiException(ErrorCode.VALIDATION_ERROR, "OTP channel is required");
+        }
+
         String normalized = switch (channel) {
             case EMAIL -> IdentifierNormalizer.normalizeEmail(identifier);
             case SMS -> IdentifierNormalizer.normalizePhone(identifier);
         };
 
-        // anti-spam: nếu OTP gần nhất < 30s thì chặn
+        // 2.anti-spam: nếu OTP gần nhất < 30s thì chặn
         otpRequestRepository.findTopByIdentifierNormalizedAndPurposeOrderByCreatedAtDesc(
                 normalized, OtpPurpose.LOGIN
         ).ifPresent(last -> {
@@ -54,6 +58,7 @@ public class OtpAuthService {
             }
         });
 
+        // 3. Generate OTP code + hash
         String code = OtpCrypto.generate6Digits();
         String codeHash = OtpCrypto.sha256(code);
 
@@ -64,43 +69,62 @@ public class OtpAuthService {
                 .identifierNormalized(normalized)
                 .codeHash(codeHash)
                 .status(OtpStatus.PENDING)
+                .attempts(0)
                 .expiresAt(Instant.now().plusSeconds(OTP_TTL_SECONDS))
                 .build();
 
         otpRequestRepository.save(otp);
 
+        // 4. Send OTP
         otpSender.send(channel, identifier, code);
 
+        // 5. Return otpRequestId cho FE
         return OtpRequestCreateResponse.builder()
+                .otpRequestId(otp.getId())
                 .expiresInSeconds(OTP_TTL_SECONDS)
                 .build();
     }
 
     public OtpVerifyResponse verifyOtp(OtpVerifyRequest req) {
         String identifier = req.getIdentifier();
-
-        // Vì verify request không gửi channel, mình sẽ tìm OTP theo cả EMAIL & PHONE normalization
-        String emailNorm = IdentifierNormalizer.normalizeEmail(identifier);
-        String phoneNorm = IdentifierNormalizer.normalizePhone(identifier);
-
         Instant now = Instant.now();
+        OtpRequest otp;
 
-        List<OtpRequest> candidatesEmail = otpRequestRepository
-                .findAllByIdentifierNormalizedAndPurposeAndStatusAndExpiresAtAfter(
-                        emailNorm, OtpPurpose.LOGIN, OtpStatus.PENDING, now
+        // 1. Resolve OTP (otpRequestId > channel)
+        if (req.getOtpRequestId() != null && !req.getOtpRequestId().isBlank()) {
+
+            otp = otpRequestRepository.findById(req.getOtpRequestId())
+                    .filter(o -> o.getStatus() == OtpStatus.PENDING)
+                    .filter(o -> o.getExpiresAt() != null && o.getExpiresAt().isAfter(now))
+                    .orElseThrow(() -> new ApiException(ErrorCode.OTP_EXPIRED));
+
+        } else {
+            // Không có otpRequestId thì BẮT BUỘC channel
+            if (req.getChannel() == null) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_ERROR,
+                        "Either otpRequestId or channel must be provided"
                 );
+            }
 
-        List<OtpRequest> candidatesPhone = otpRequestRepository
-                .findAllByIdentifierNormalizedAndPurposeAndStatusAndExpiresAtAfter(
-                        phoneNorm, OtpPurpose.LOGIN, OtpStatus.PENDING, now
-                );
+            String normalized = (req.getChannel() == OtpChannel.EMAIL)
+                    ? IdentifierNormalizer.normalizeEmail(req.getIdentifier())
+                    : IdentifierNormalizer.normalizePhone(req.getIdentifier());
 
-        OtpRequest otp = pickLatest(candidatesEmail, candidatesPhone);
-        if (otp == null) {
-            throw new OTPExpiredException("OTP expired");
-            // nếu bạn thêm ErrorCode.OTP_EXPIRED thì dùng OTP_EXPIRED
+            List<OtpRequest> candidates =
+                    otpRequestRepository.findAllByIdentifierNormalizedAndPurposeAndStatusAndExpiresAtAfter(
+                            normalized,
+                            OtpPurpose.LOGIN,
+                            OtpStatus.PENDING,
+                            now
+                    );
+
+            otp = candidates.stream()
+                    .max(Comparator.comparing(OtpRequest::getCreatedAt))
+                    .orElseThrow(() -> new OTPExpiredException("OTP expired"));
         }
 
+        // 2. Check code
         String codeHash = OtpCrypto.sha256(req.getCode());
         if (!codeHash.equals(otp.getCodeHash())) {
             otp.setAttempts(otp.getAttempts() + 1);
@@ -111,14 +135,14 @@ public class OtpAuthService {
             otpRequestRepository.save(otp);
 
             throw new OTPInvalidException("OTP code invalid");
-            // nếu bạn thêm ErrorCode.OTP_INVALID thì dùng OTP_INVALID
         }
 
-        // verified
+        // 3. verified
         otp.setStatus(OtpStatus.VERIFIED);
         otp.setVerifiedAt(now);
         otpRequestRepository.save(otp);
 
+        // 4. login or register
         IdentityProvider provider = (otp.getChannel() == OtpChannel.EMAIL)
                 ? IdentityProvider.EMAIL
                 : IdentityProvider.PHONE;
