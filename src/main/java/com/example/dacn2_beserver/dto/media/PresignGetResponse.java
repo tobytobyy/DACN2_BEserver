@@ -9,11 +9,7 @@ import java.time.Instant;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class PresignPutResponse {
-    private String objectKey;
-    private String uploadUrl;
+public class PresignGetResponse {
+    private String url;
     private Instant expiresAt;
-
-    // only used for chat media
-    private String publicUrl;
 }

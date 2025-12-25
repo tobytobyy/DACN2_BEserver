@@ -1,6 +1,5 @@
 package com.example.dacn2_beserver.dto.ai;
 
-import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 
 import java.util.Map;
@@ -11,8 +10,10 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class SendChatMessageRequest {
-    @NotBlank
+
     private String content;
+
+    private String imageObjectKey;
 
     // optional metadata
     private Map<String, Object> meta;

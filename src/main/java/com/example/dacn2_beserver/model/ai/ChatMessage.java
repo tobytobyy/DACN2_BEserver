@@ -34,6 +34,7 @@ public class ChatMessage {
 
     private Map<String, Object> meta;
 
+    @Indexed(expireAfter = "180d")
     @Builder.Default
     private Instant createdAt = Instant.now();
 }
