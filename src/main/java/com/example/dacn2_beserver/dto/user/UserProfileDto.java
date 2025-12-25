@@ -12,7 +12,7 @@ public class UserProfileDto {
     private String avatarUrl;
 
     private String gender;
-    private Integer birthYear;
+    private Integer birthday;
     private Double heightCm;
     private Double weightKg;
 }

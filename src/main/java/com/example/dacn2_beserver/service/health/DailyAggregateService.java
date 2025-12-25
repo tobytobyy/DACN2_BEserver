@@ -1,18 +1,20 @@
 package com.example.dacn2_beserver.service.health;
 
-import com.example.dacn2_beserver.model.health.DailyAggregate;
-import com.example.dacn2_beserver.model.user.User;
-import com.example.dacn2_beserver.repository.DailyAggregateRepository;
-import com.example.dacn2_beserver.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+
+import org.springframework.stereotype.Service;
+
+import com.example.dacn2_beserver.model.health.DailyAggregate;
+import com.example.dacn2_beserver.model.user.User;
+import com.example.dacn2_beserver.repository.DailyAggregateRepository;
+import com.example.dacn2_beserver.repository.UserRepository;
+
+import lombok.RequiredArgsConstructor;
 
 /**
  * DailyAggregateService
@@ -236,5 +238,33 @@ public class DailyAggregateService {
 
     private List<String> safeCopy(List<String> src) {
         return src == null ? new ArrayList<>() : new ArrayList<>(src);
+    }
+
+    // ============================================================
+    //===========================================================
+    /**
+ * Cộng workout vào DailyAggregate của ngày tương ứng (theo timezone user).
+ * Quy ước MVP: tính vào ngày kết thúc workout (endAt).
+ */
+    public DailyAggregate addWorkout(String userId, Instant workoutEndAt, int steps, double distanceKm, int caloriesOut) {
+        User user = requireUser(userId);
+        ZoneId zoneId = userZone(user);
+
+        LocalDate date = LocalDateTime.ofInstant(workoutEndAt, zoneId).toLocalDate();
+        DailyAggregate agg = findOrCreate(userId, date);
+
+        agg.setSteps(nvl(agg.getSteps()) + Math.max(0, steps));
+        agg.setDistanceKm((agg.getDistanceKm() == null ? 0.0 : agg.getDistanceKm()) + Math.max(0.0, distanceKm));
+        agg.setCaloriesOut(nvl(agg.getCaloriesOut()) + Math.max(0, caloriesOut));
+
+        touch(agg);
+
+        // (optional) simple highlight for workout
+        List<String> highlights = safeCopy(agg.getHighlights());
+        highlights.removeIf(s -> s != null && s.startsWith("Workout:"));
+        highlights.add("Workout: +" + Math.max(0, steps) + " steps, +" + String.format("%.2f", Math.max(0.0, distanceKm)) + " km");
+        agg.setHighlights(highlights);
+
+        return dailyAggregateRepository.save(agg);
     }
 }
