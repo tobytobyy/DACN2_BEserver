@@ -94,3 +94,5 @@ coverage/
 # =====================
 .env
 .env.*
+
+docker-compose.override.yml
