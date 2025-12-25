@@ -1,5 +1,6 @@
 package com.example.dacn2_beserver.service.ratelimit;
 
+import com.example.dacn2_beserver.config.RateLimitProperties;
 import com.example.dacn2_beserver.exception.ApiException;
 import com.example.dacn2_beserver.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -19,11 +20,17 @@ public class RedisRateLimitService {
 
     private final StringRedisTemplate redis;
     private final DefaultRedisScript<Long> rateLimitLuaScript;
+    private final RateLimitProperties props;
 
     /**
      * Fail-open on Redis errors to avoid taking down the API.
+     * Can be disabled via ratelimit.enabled=false.
      */
     public void checkOrThrow(String key, long limit, long windowSeconds) {
+        if (!props.isEnabled()) {
+            return;
+        }
+
         try {
             Long allowed = redis.execute(
                     rateLimitLuaScript,

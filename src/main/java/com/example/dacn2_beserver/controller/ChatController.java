@@ -1,5 +1,6 @@
 package com.example.dacn2_beserver.controller;
 
+import com.example.dacn2_beserver.config.RateLimitProperties;
 import com.example.dacn2_beserver.dto.ai.*;
 import com.example.dacn2_beserver.dto.common.ApiResponse;
 import com.example.dacn2_beserver.exception.ApiException;
@@ -21,6 +22,7 @@ public class ChatController {
 
     private final ChatService chatService;
     private final RedisRateLimitService rateLimitService;
+    private final RateLimitProperties rateLimitProps;
 
     @PostMapping("/sessions")
     public ApiResponse<ChatSessionResponse> createSession(
@@ -56,8 +58,8 @@ public class ChatController {
     ) {
         rateLimitService.checkOrThrow(
                 "rl:chat:msg:" + principal.userId() + ":" + sessionId,
-                10,   // default limit
-                10    // per 10 seconds
+                rateLimitProps.getChat().getSend().getLimit(),
+                rateLimitProps.getChat().getSend().getWindowSeconds()
         );
         return ApiResponse.ok(chatService.sendMessage(principal.userId(), sessionId, req));
     }

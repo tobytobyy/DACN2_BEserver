@@ -1,5 +1,6 @@
 package com.example.dacn2_beserver.controller;
 
+import com.example.dacn2_beserver.config.RateLimitProperties;
 import com.example.dacn2_beserver.dto.common.ApiResponse;
 import com.example.dacn2_beserver.dto.media.PresignGetResponse;
 import com.example.dacn2_beserver.dto.media.PresignPutRequest;
@@ -26,6 +27,7 @@ public class MediaController {
     private final NutritionS3Service nutritionS3Service;
     private final ChatMediaS3Service chatMediaS3Service;
     private final RedisRateLimitService rateLimitService;
+    private final RateLimitProperties rateLimitProps;
 
     @Value("${aws.s3.chat.presign.get-ttl-seconds:600}")
     private long chatGetTtlSeconds;
@@ -37,8 +39,8 @@ public class MediaController {
     ) {
         rateLimitService.checkOrThrow(
                 "rl:media:presign:" + principal.userId(),
-                20,  // default limit
-                60   // per 60 seconds
+                rateLimitProps.getMedia().getPresign().getLimit(),
+                rateLimitProps.getMedia().getPresign().getWindowSeconds()
         );
 
         long sizeBytes = requirePositiveSizeBytes(req.getSizeBytes());
@@ -65,8 +67,8 @@ public class MediaController {
     ) {
         rateLimitService.checkOrThrow(
                 "rl:media:presign:" + principal.userId(),
-                20,  // default limit
-                60   // per 60 seconds
+                rateLimitProps.getMedia().getPresign().getLimit(),
+                rateLimitProps.getMedia().getPresign().getWindowSeconds()
         );
 
         long sizeBytes = requirePositiveSizeBytes(req.getSizeBytes());
