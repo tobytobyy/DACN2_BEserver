@@ -11,13 +11,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/_debug")
+@RequestMapping("/ai")
 @RequiredArgsConstructor
-public class DebugAiController {
+public class AiController {
 
     private final AiFoodClient aiFoodClient;
 
-    @PostMapping(value = "/ai-food", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping(value = "/food-predict", consumes = MediaType.APPLICATION_JSON_VALUE)
     public AiFoodPredictResponse test(@RequestBody AiFoodPredictRequest req) {
         return aiFoodClient.predictFoodByUrl(req.getImageUrl());
     }
