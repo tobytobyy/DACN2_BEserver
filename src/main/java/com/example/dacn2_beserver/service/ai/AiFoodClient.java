@@ -4,12 +4,13 @@ import com.example.dacn2_beserver.dto.ai.AiFoodPredictRequest;
 import com.example.dacn2_beserver.dto.ai.AiFoodPredictResponse;
 import com.example.dacn2_beserver.exception.ApiException;
 import com.example.dacn2_beserver.exception.ErrorCode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 @Service
 @RequiredArgsConstructor
@@ -23,37 +24,71 @@ public class AiFoodClient {
     @Value("${ai.internal-token:}")
     private String internalToken;
 
+    @Value("${ai.retry.max-attempts:2}")
+    private int maxAttempts;
+
+    @Value("${ai.retry.backoff-ms:200}")
+    private long backoffMs;
+
     public AiFoodPredictResponse predictFoodByUrl(String imageUrl) {
         if (imageUrl == null || imageUrl.isBlank()) {
             throw new ApiException(ErrorCode.VALIDATION_ERROR, "image_url is required");
         }
 
-        try {
-            AiFoodPredictRequest req = AiFoodPredictRequest.builder()
-                    .imageUrl(imageUrl)
-                    .build();
+        AiFoodPredictRequest req = AiFoodPredictRequest.builder()
+                .imageUrl(imageUrl)
+                .build();
 
-            System.out.println("Sending request: " + new ObjectMapper().writeValueAsString(req));
-
-            RestClient.RequestBodySpec requestSpec = aiRestClient.post()
+        return withRetry(() -> {
+            var spec = aiRestClient.post()
                     .uri(predictPath)
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.APPLICATION_JSON);
 
             if (internalToken != null && !internalToken.isBlank()) {
-                requestSpec = requestSpec.header("X-Internal-Token", internalToken);
+                spec = spec.header("X-Internal-Token", internalToken);
             }
 
-            // Gửi body và retrieve trong một chain riêng
-            AiFoodPredictResponse response = requestSpec
-                    .body(req)
+            return spec.body(req)
                     .retrieve()
                     .body(AiFoodPredictResponse.class);
+        }, "AI food predict");
+    }
 
-            return response;
+    private <T> T withRetry(ThrowingSupplier<T> call, String label) {
+        int attempts = Math.max(1, maxAttempts);
+        RuntimeException last = null;
 
-        } catch (Exception e) {
-            throw new ApiException(ErrorCode.AI_SERVICE_ERROR, "Failed to call AI server: " + e.getMessage());
+        for (int i = 1; i <= attempts; i++) {
+            try {
+                return call.get();
+            } catch (ResourceAccessException e) {
+                last = e;
+            } catch (RestClientResponseException e) {
+                if (e.getStatusCode().is5xxServerError()) {
+                    last = e;
+                } else {
+                    throw new ApiException(ErrorCode.AI_SERVICE_ERROR, label + " failed: " + e.getMessage());
+                }
+            } catch (Exception e) {
+                throw new ApiException(ErrorCode.AI_SERVICE_ERROR, label + " failed: " + e.getMessage());
+            }
+
+            if (i < attempts) {
+                try {
+                    Thread.sleep(backoffMs);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
         }
+
+        throw new ApiException(ErrorCode.AI_SERVICE_ERROR, label + " failed after retries: " + (last != null ? last.getMessage() : "unknown"));
+    }
+
+    @FunctionalInterface
+    private interface ThrowingSupplier<T> {
+        T get() throws Exception;
     }
 }

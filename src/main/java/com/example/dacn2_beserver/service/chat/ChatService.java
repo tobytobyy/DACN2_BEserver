@@ -13,22 +13,24 @@ import com.example.dacn2_beserver.repository.UserRepository;
 import com.example.dacn2_beserver.service.ai.AiChatClient;
 import com.example.dacn2_beserver.service.storage.ChatMediaS3Service;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Period;
 import java.time.ZoneId;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
 public class ChatService {
 
     private static final String DEFAULT_IMAGE_ONLY_MESSAGE = "Analyze this image";
+
+    // Fallback content (A)
+    private static final String AI_FALLBACK_MESSAGE =
+            "Sorry, I'm having trouble right now. Please try again in a moment.";
 
     private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
@@ -48,6 +50,7 @@ public class ChatService {
                 .createdAt(Instant.now())
                 .updatedAt(Instant.now())
                 .contextSnapshot(req != null ? req.getContextSnapshot() : null)
+                .deletedAt(null)
                 .build();
 
         s = chatSessionRepository.save(s);
@@ -55,20 +58,31 @@ public class ChatService {
     }
 
     public List<ChatSessionResponse> listSessions(String userId) {
-        return chatSessionRepository.findTop50ByUserIdOrderByUpdatedAtDesc(userId)
+        return chatSessionRepository.findTop50ByUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(userId)
                 .stream().map(this::toSessionResponse).toList();
     }
 
-    public List<ChatMessageResponse> listMessages(String userId, String sessionId) {
-        ChatSession s = chatSessionRepository.findByIdAndUserId(sessionId, userId)
+    // Pagination (A): before + limit
+    public List<ChatMessageResponse> listMessages(String userId, String sessionId, Instant before, int limit) {
+        ChatSession s = chatSessionRepository.findByIdAndUserIdAndDeletedAtIsNull(sessionId, userId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Session not found"));
 
-        return chatMessageRepository.findTop100BySessionIdOrderByCreatedAtAsc(s.getId())
-                .stream().map(this::toMessageResponse).toList();
+        int safeLimit = Math.min(Math.max(limit, 1), 100);
+        Instant cursor = (before != null) ? before : Instant.now().plusSeconds(1);
+
+        // Fetch DESC (newest -> oldest), then reverse to ASC for FE rendering.
+        List<ChatMessage> desc = chatMessageRepository.findBySessionIdAndCreatedAtBeforeOrderByCreatedAtDesc(
+                s.getId(),
+                cursor,
+                PageRequest.of(0, safeLimit)
+        );
+
+        Collections.reverse(desc);
+        return desc.stream().map(this::toMessageResponse).toList();
     }
 
     public SendChatMessageResponse sendMessage(String userId, String sessionId, SendChatMessageRequest req) {
-        ChatSession session = chatSessionRepository.findByIdAndUserId(sessionId, userId)
+        ChatSession session = chatSessionRepository.findByIdAndUserIdAndDeletedAtIsNull(sessionId, userId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Session not found"));
 
         String content = req != null ? req.getContent() : null;
@@ -89,12 +103,9 @@ public class ChatService {
         String aiImageUrl = null;
         if (hasImage) {
             chatMediaS3Service.assertOwnedByUser(userId, imageObjectKey);
-
             aiImageUrl = chatMediaS3Service.presignGetUrl(imageObjectKey);
 
-            userMeta.put("image", Map.of(
-                    "objectKey", imageObjectKey
-            ));
+            userMeta.put("image", Map.of("objectKey", imageObjectKey));
         }
 
         ChatMessage userMsg = ChatMessage.builder()
@@ -107,12 +118,9 @@ public class ChatService {
                 .build();
         userMsg = chatMessageRepository.save(userMsg);
 
-        // Build user_context exactly matching AIserver schema (flat object).
         Map<String, Object> userContext = buildUserContextForAi(userId);
-
         String finalMessage = hasText ? content.trim() : DEFAULT_IMAGE_ONLY_MESSAGE;
 
-        // IMPORTANT: AIserver schema only expects session_id, message, image_url, user_context.
         AiChatRequest aiReq = AiChatRequest.builder()
                 .sessionId(session.getId())
                 .message(finalMessage)
@@ -120,9 +128,29 @@ public class ChatService {
                 .userContext(userContext)
                 .build();
 
-        AiChatResponse aiRes = aiChatClient.chat(aiReq);
-
+        AiChatResponse aiRes = null;
         Map<String, Object> assistantMeta = new HashMap<>();
+
+        try {
+            aiRes = aiChatClient.chat(aiReq);
+        } catch (ApiException e) {
+            // Persist fallback assistant message even if AI fails.
+            if (e.getErrorCode() == ErrorCode.AI_SERVICE_ERROR) {
+                assistantMeta.put("ai_error", Map.of(
+                        "code", e.getErrorCode().getCode(),
+                        "message", e.getMessage()
+                ));
+                assistantMeta.put("suggested_actions", List.of("Try again"));
+                aiRes = AiChatResponse.builder()
+                        .content(AI_FALLBACK_MESSAGE)
+                        .suggestedActions(List.of("Try again"))
+                        .meta(Map.of("fallback", true))
+                        .build();
+            } else {
+                throw e;
+            }
+        }
+
         if (aiRes != null && aiRes.getSuggestedActions() != null) {
             assistantMeta.put("suggested_actions", aiRes.getSuggestedActions());
         }
@@ -149,6 +177,32 @@ public class ChatService {
                 .build();
     }
 
+    // Soft delete (A)
+    public void deleteSession(String userId, String sessionId) {
+        ChatSession s = chatSessionRepository.findByIdAndUserIdAndDeletedAtIsNull(sessionId, userId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Session not found"));
+
+        s.setDeletedAt(Instant.now());
+        s.setUpdatedAt(Instant.now());
+        chatSessionRepository.save(s);
+    }
+
+    public ChatSessionResponse updateTitle(String userId, String sessionId, UpdateChatSessionRequest req) {
+        ChatSession s = chatSessionRepository.findByIdAndUserIdAndDeletedAtIsNull(sessionId, userId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Session not found"));
+
+        String title = (req != null) ? req.getTitle() : null;
+        if (title != null) {
+            String t = title.trim();
+            if (t.isBlank()) throw new ApiException(ErrorCode.VALIDATION_ERROR, "title must not be blank");
+            s.setTitle(t);
+            s.setUpdatedAt(Instant.now());
+            s = chatSessionRepository.save(s);
+        }
+
+        return toSessionResponse(s);
+    }
+
     private Map<String, Object> buildUserContextForAi(String userId) {
         User u = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, "User not found"));
@@ -157,7 +211,6 @@ public class ChatService {
         ctx.put("user_id", userId);
 
         if (u.getProfile() != null) {
-            // AIserver expects: age, gender, height, weight (optional)
             Integer age = computeAge(u.getProfile().getBirthday(), safeZoneId(u));
             if (age != null) ctx.put("age", age);
 
@@ -172,9 +225,7 @@ public class ChatService {
             }
         }
 
-        // Optional in AI schema; safe default.
         ctx.put("medical_conditions", List.of());
-
         return ctx;
     }
 
@@ -209,7 +260,6 @@ public class ChatService {
     private ChatMessageResponse toMessageResponse(ChatMessage m) {
         List<String> suggested = null;
 
-        // Extract suggested actions for assistant messages (FE-friendly field)
         if (m.getRole() == ChatRole.ASSISTANT && m.getMeta() != null) {
             Object v = m.getMeta().get("suggested_actions");
             if (v instanceof List<?> list) {

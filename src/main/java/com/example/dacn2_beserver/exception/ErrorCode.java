@@ -44,6 +44,8 @@ public enum ErrorCode {
     LINK_TICKET_EXPIRED(HttpStatus.BAD_REQUEST, "LINK_TICKET_EXPIRED", "Link ticket is expired"),
     GOOGLE_ALREADY_LINKED(HttpStatus.CONFLICT, "GOOGLE_ALREADY_LINKED", "This Google account is already linked"),
 
+    RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "RATE_LIMITED", "Too many requests"),
+    
     ;
 
     private final HttpStatus httpStatus;

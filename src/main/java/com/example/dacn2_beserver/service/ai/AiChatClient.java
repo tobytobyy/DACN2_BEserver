@@ -9,7 +9,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,14 +24,24 @@ public class AiChatClient {
     private static final ParameterizedTypeReference<Map<String, Object>> MAP_TYPE =
             new ParameterizedTypeReference<>() {
             };
+
     private final RestClient aiRestClient;
+
     @Value("${ai.chat.path}")
     private String chatPath;
+
     @Value("${ai.internal-token:}")
     private String internalToken;
 
+    // A: 2 attempts total = 1 retry
+    @Value("${ai.retry.max-attempts:2}")
+    private int maxAttempts;
+
+    @Value("${ai.retry.backoff-ms:200}")
+    private long backoffMs;
+
     public AiChatResponse chat(AiChatRequest req) {
-        try {
+        return withRetry(() -> {
             var spec = aiRestClient.post()
                     .uri(chatPath)
                     .contentType(MediaType.APPLICATION_JSON)
@@ -41,10 +53,40 @@ public class AiChatClient {
 
             Map<String, Object> raw = spec.body(req).retrieve().body(MAP_TYPE);
             return normalize(raw);
+        }, "AI chat");
+    }
 
-        } catch (Exception e) {
-            throw new ApiException(ErrorCode.AI_SERVICE_ERROR, "Failed to call AI chat: " + e.getMessage());
+    private <T> T withRetry(ThrowingSupplier<T> call, String label) {
+        int attempts = Math.max(1, maxAttempts);
+        RuntimeException last = null;
+
+        for (int i = 1; i <= attempts; i++) {
+            try {
+                return call.get();
+            } catch (ResourceAccessException e) {
+                last = e;
+            } catch (RestClientResponseException e) {
+                // Retry only on 5xx
+                if (e.getStatusCode().is5xxServerError()) {
+                    last = e;
+                } else {
+                    throw new ApiException(ErrorCode.AI_SERVICE_ERROR, label + " failed: " + e.getMessage());
+                }
+            } catch (Exception e) {
+                throw new ApiException(ErrorCode.AI_SERVICE_ERROR, label + " failed: " + e.getMessage());
+            }
+
+            if (i < attempts) {
+                try {
+                    Thread.sleep(backoffMs);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
         }
+
+        throw new ApiException(ErrorCode.AI_SERVICE_ERROR, label + " failed after retries: " + (last != null ? last.getMessage() : "unknown"));
     }
 
     @SuppressWarnings("unchecked")
@@ -54,9 +96,7 @@ public class AiChatClient {
         Object dataObj = raw.get("data");
         Map<String, Object> data = (dataObj instanceof Map<?, ?>) ? (Map<String, Object>) dataObj : raw;
 
-        String content = firstString(data,
-                "text_response", "content", "text", "answer", "message"
-        );
+        String content = firstString(data, "text_response", "content", "text", "answer", "message");
 
         List<String> suggested = new ArrayList<>();
         Object actionsObj = data.get("suggested_actions");
@@ -74,7 +114,7 @@ public class AiChatClient {
         return AiChatResponse.builder()
                 .content(content)
                 .suggestedActions(suggested.isEmpty() ? null : suggested)
-                .meta(raw) // keep raw for debugging
+                .meta(raw)
                 .build();
     }
 
@@ -84,5 +124,10 @@ public class AiChatClient {
             if (v instanceof String s && !s.isBlank()) return s;
         }
         return null;
+    }
+
+    @FunctionalInterface
+    private interface ThrowingSupplier<T> {
+        T get() throws Exception;
     }
 }

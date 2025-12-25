@@ -7,6 +7,7 @@ import com.example.dacn2_beserver.dto.media.PresignPutResponse;
 import com.example.dacn2_beserver.exception.ApiException;
 import com.example.dacn2_beserver.exception.ErrorCode;
 import com.example.dacn2_beserver.security.AuthPrincipal;
+import com.example.dacn2_beserver.service.ratelimit.RedisRateLimitService;
 import com.example.dacn2_beserver.service.storage.ChatMediaS3Service;
 import com.example.dacn2_beserver.service.storage.NutritionS3Service;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ public class MediaController {
 
     private final NutritionS3Service nutritionS3Service;
     private final ChatMediaS3Service chatMediaS3Service;
+    private final RedisRateLimitService rateLimitService;
 
     @Value("${aws.s3.chat.presign.get-ttl-seconds:600}")
     private long chatGetTtlSeconds;
@@ -33,6 +35,12 @@ public class MediaController {
             @AuthenticationPrincipal AuthPrincipal principal,
             @RequestBody PresignPutRequest req
     ) {
+        rateLimitService.checkOrThrow(
+                "rl:media:presign:" + principal.userId(),
+                20,  // default limit
+                60   // per 60 seconds
+        );
+
         long sizeBytes = requirePositiveSizeBytes(req.getSizeBytes());
         String contentType = requireContentType(req.getContentType());
 
@@ -55,6 +63,12 @@ public class MediaController {
             @AuthenticationPrincipal AuthPrincipal principal,
             @RequestBody PresignPutRequest req
     ) {
+        rateLimitService.checkOrThrow(
+                "rl:media:presign:" + principal.userId(),
+                20,  // default limit
+                60   // per 60 seconds
+        );
+
         long sizeBytes = requirePositiveSizeBytes(req.getSizeBytes());
         String contentType = requireContentType(req.getContentType());
 

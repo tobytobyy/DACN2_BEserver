@@ -30,8 +30,12 @@ public class ChatSession {
 
     @Builder.Default
     private Instant createdAt = Instant.now();
+
     @Builder.Default
     private Instant updatedAt = Instant.now();
 
     private Instant archivedAt;
+
+    // Soft delete marker
+    private Instant deletedAt;
 }
