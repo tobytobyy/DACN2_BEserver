@@ -207,11 +207,28 @@ public class ChatService {
     }
 
     private ChatMessageResponse toMessageResponse(ChatMessage m) {
+        List<String> suggested = null;
+
+        // Extract suggested actions for assistant messages (FE-friendly field)
+        if (m.getRole() == ChatRole.ASSISTANT && m.getMeta() != null) {
+            Object v = m.getMeta().get("suggested_actions");
+            if (v instanceof List<?> list) {
+                suggested = list.stream()
+                        .filter(it -> it instanceof String)
+                        .map(it -> (String) it)
+                        .filter(s -> s != null && !s.isBlank())
+                        .toList();
+                if (suggested.isEmpty()) suggested = null;
+            }
+        }
+
         return ChatMessageResponse.builder()
                 .id(m.getId())
                 .sessionId(m.getSessionId())
+                .userId(m.getUserId())
                 .role(m.getRole())
                 .content(m.getContent())
+                .suggestedActions(suggested)
                 .meta(m.getMeta())
                 .createdAt(m.getCreatedAt())
                 .build();
