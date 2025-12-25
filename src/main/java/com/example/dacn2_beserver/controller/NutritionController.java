@@ -1,7 +1,10 @@
 package com.example.dacn2_beserver.controller;
 
 import com.example.dacn2_beserver.dto.ai.AiFoodPredictResponse;
+import com.example.dacn2_beserver.dto.common.ApiResponse;
 import com.example.dacn2_beserver.dto.nutrition.NutritionAnalyzeRequest;
+import com.example.dacn2_beserver.exception.ApiException;
+import com.example.dacn2_beserver.exception.ErrorCode;
 import com.example.dacn2_beserver.security.AuthPrincipal;
 import com.example.dacn2_beserver.service.ai.AiFoodClient;
 import com.example.dacn2_beserver.service.storage.NutritionS3Service;
@@ -22,13 +25,13 @@ public class NutritionController {
     private final AiFoodClient aiFoodClient;
 
     @PostMapping(value = "/analyze", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public AiFoodPredictResponse analyze(
+    public ApiResponse<AiFoodPredictResponse> analyze(
             @AuthenticationPrincipal AuthPrincipal principal,
             @RequestBody NutritionAnalyzeRequest req
     ) {
-        String objectKey = req.getObjectKey();
+        String objectKey = (req != null) ? req.getObjectKey() : null;
         if (objectKey == null || objectKey.isBlank()) {
-            throw new IllegalArgumentException("objectKey is required");
+            throw new ApiException(ErrorCode.VALIDATION_ERROR, "objectKey is required");
         }
 
         nutritionS3Service.assertOwnedByUser(principal.userId(), objectKey);
@@ -36,8 +39,9 @@ public class NutritionController {
         String imageUrl = nutritionS3Service.presignGetUrl(objectKey);
 
         try {
-            return aiFoodClient.predictFoodByUrl(imageUrl);
+            return ApiResponse.ok(aiFoodClient.predictFoodByUrl(imageUrl));
         } finally {
+            // Delete immediately after AI returns (best effort)
             nutritionS3Service.deleteObjectBestEffort(objectKey);
         }
     }

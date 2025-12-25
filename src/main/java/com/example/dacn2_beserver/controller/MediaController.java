@@ -4,6 +4,8 @@ import com.example.dacn2_beserver.dto.common.ApiResponse;
 import com.example.dacn2_beserver.dto.media.PresignGetResponse;
 import com.example.dacn2_beserver.dto.media.PresignPutRequest;
 import com.example.dacn2_beserver.dto.media.PresignPutResponse;
+import com.example.dacn2_beserver.exception.ApiException;
+import com.example.dacn2_beserver.exception.ErrorCode;
 import com.example.dacn2_beserver.security.AuthPrincipal;
 import com.example.dacn2_beserver.service.storage.ChatMediaS3Service;
 import com.example.dacn2_beserver.service.storage.NutritionS3Service;
@@ -26,19 +28,18 @@ public class MediaController {
     @Value("${aws.s3.chat.presign.get-ttl-seconds:600}")
     private long chatGetTtlSeconds;
 
-    /**
-     * Client (mobile) request presigned post to upload nutrition media to S3 nutrition bucket.
-     * Return: objectKey + uploadUrl + expiresAt
-     */
     @PostMapping(value = "/nutrition/presign-put", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ApiResponse<PresignPutResponse> presignNutritionPut(
             @AuthenticationPrincipal AuthPrincipal principal,
             @RequestBody PresignPutRequest req
     ) {
+        long sizeBytes = requirePositiveSizeBytes(req.getSizeBytes());
+        String contentType = requireContentType(req.getContentType());
+
         var r = nutritionS3Service.presignPut(
                 principal.userId(),
-                req.getContentType(),
-                req.getSizeBytes() == null ? 0L : req.getSizeBytes()
+                contentType,
+                sizeBytes
         );
 
         return ApiResponse.ok(PresignPutResponse.builder()
@@ -49,33 +50,29 @@ public class MediaController {
                 .build());
     }
 
-    /**
-     * Client (mobile) request presigned PUT to upload chat media to S3 chat bucket.
-     * Return: objectKey + uploadUrl + expiresAt
-     */
     @PostMapping(value = "/chat/presign-put", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ApiResponse<PresignPutResponse> presignChatPut(
             @AuthenticationPrincipal AuthPrincipal principal,
             @RequestBody PresignPutRequest req
     ) {
+        long sizeBytes = requirePositiveSizeBytes(req.getSizeBytes());
+        String contentType = requireContentType(req.getContentType());
+
         var r = chatMediaS3Service.presignPut(
                 principal.userId(),
-                req.getContentType(),
-                req.getSizeBytes() == null ? 0L : req.getSizeBytes()
+                contentType,
+                sizeBytes
         );
 
+        // Chat bucket should be private. Do NOT return public URL here.
         return ApiResponse.ok(PresignPutResponse.builder()
                 .objectKey(r.objectKey())
                 .uploadUrl(r.uploadUrl())
                 .expiresAt(r.expiresAt())
-                .publicUrl(chatMediaS3Service.publicUrl(r.objectKey()))
+                .publicUrl(null)
                 .build());
     }
 
-    /**
-     * Client request presigned GET to get chat media from S3 chat bucket (private).
-     * Returns: url + expiresAt
-     */
     @GetMapping("/chat/presign-get")
     public ApiResponse<PresignGetResponse> presignChatGet(
             @AuthenticationPrincipal AuthPrincipal principal,
@@ -90,5 +87,19 @@ public class MediaController {
                 .url(url)
                 .expiresAt(expiresAt)
                 .build());
+    }
+
+    private long requirePositiveSizeBytes(Long sizeBytes) {
+        if (sizeBytes == null || sizeBytes <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_ERROR, "sizeBytes is required and must be > 0");
+        }
+        return sizeBytes;
+    }
+
+    private String requireContentType(String contentType) {
+        if (contentType == null || contentType.isBlank()) {
+            throw new ApiException(ErrorCode.VALIDATION_ERROR, "contentType is required");
+        }
+        return contentType.trim();
     }
 }

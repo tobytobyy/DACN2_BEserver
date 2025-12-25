@@ -1,7 +1,6 @@
 package com.example.dacn2_beserver.service.chat;
 
 import com.example.dacn2_beserver.dto.ai.*;
-import com.example.dacn2_beserver.dto.health.DailyAggregateResponse;
 import com.example.dacn2_beserver.exception.ApiException;
 import com.example.dacn2_beserver.exception.ErrorCode;
 import com.example.dacn2_beserver.model.ai.ChatMessage;
@@ -12,14 +11,15 @@ import com.example.dacn2_beserver.repository.ChatMessageRepository;
 import com.example.dacn2_beserver.repository.ChatSessionRepository;
 import com.example.dacn2_beserver.repository.UserRepository;
 import com.example.dacn2_beserver.service.ai.AiChatClient;
-import com.example.dacn2_beserver.service.health.SummaryService;
 import com.example.dacn2_beserver.service.storage.ChatMediaS3Service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.Period;
 import java.time.ZoneId;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,7 +37,6 @@ public class ChatService {
     private final AiChatClient aiChatClient;
 
     private final UserRepository userRepository;
-    private final SummaryService summaryService;
 
     public ChatSessionResponse createSession(String userId, CreateChatSessionRequest req) {
         String title = (req != null && req.getTitle() != null) ? req.getTitle().trim() : null;
@@ -85,16 +84,16 @@ public class ChatService {
         Map<String, Object> userMeta = new HashMap<>();
         if (req != null && req.getMeta() != null) userMeta.putAll(req.getMeta());
 
-        String imageUrl = null;
+        // For storage: keep only objectKey (do NOT store URL).
+        // For AI fetch: use presigned GET URL.
+        String aiImageUrl = null;
         if (hasImage) {
             chatMediaS3Service.assertOwnedByUser(userId, imageObjectKey);
 
-            // Use public URL (stable, non-expiring)
-            imageUrl = chatMediaS3Service.publicUrl(imageObjectKey);
+            aiImageUrl = chatMediaS3Service.presignGetUrl(imageObjectKey);
 
             userMeta.put("image", Map.of(
-                    "objectKey", imageObjectKey,
-                    "url", imageUrl
+                    "objectKey", imageObjectKey
             ));
         }
 
@@ -108,31 +107,16 @@ public class ChatService {
                 .build();
         userMsg = chatMessageRepository.save(userMsg);
 
-        // Build history (optional) - last 100 asc
-        List<Map<String, Object>> history = chatMessageRepository.findTop100BySessionIdOrderByCreatedAtAsc(session.getId())
-                .stream()
-                .map(m -> {
-                    Map<String, Object> mm = new HashMap<>();
-                    mm.put("role", toAiRole(m.getRole()));
-                    mm.put("content", m.getContent());
-
-                    if (m.getMeta() != null && m.getMeta().get("image") instanceof Map<?, ?> im) {
-                        Object url = ((Map<?, ?>) im).get("url");
-                        if (url != null) mm.put("image_url", url);
-                    }
-                    return mm;
-                }).toList();
-
-        Map<String, Object> userContext = buildUserContext(userId);
+        // Build user_context exactly matching AIserver schema (flat object).
+        Map<String, Object> userContext = buildUserContextForAi(userId);
 
         String finalMessage = hasText ? content.trim() : DEFAULT_IMAGE_ONLY_MESSAGE;
 
+        // IMPORTANT: AIserver schema only expects session_id, message, image_url, user_context.
         AiChatRequest aiReq = AiChatRequest.builder()
                 .sessionId(session.getId())
-                .userId(userId)
                 .message(finalMessage)
-                .imageUrl(imageUrl)
-                .history(history)
+                .imageUrl(aiImageUrl)
                 .userContext(userContext)
                 .build();
 
@@ -165,64 +149,41 @@ public class ChatService {
                 .build();
     }
 
-    private String toAiRole(ChatRole role) {
-        if (role == null) return "user";
-        return role == ChatRole.ASSISTANT ? "assistant" : "user";
-    }
-
-    private Map<String, Object> buildUserContext(String userId) {
+    private Map<String, Object> buildUserContextForAi(String userId) {
         User u = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, "User not found"));
 
         Map<String, Object> ctx = new HashMap<>();
+        ctx.put("user_id", userId);
 
-        // profile
         if (u.getProfile() != null) {
-            Map<String, Object> profile = new HashMap<>();
-            profile.put("fullName", u.getProfile().getFullName());
-            profile.put("gender", u.getProfile().getGender() == null ? null : u.getProfile().getGender().name());
-            profile.put("birthday", u.getProfile().getBirthday());
-            profile.put("heightCm", u.getProfile().getHeightCm());
-            profile.put("weightKg", u.getProfile().getWeightKg());
-            ctx.put("profile", profile);
+            // AIserver expects: age, gender, height, weight (optional)
+            Integer age = computeAge(u.getProfile().getBirthday(), safeZoneId(u));
+            if (age != null) ctx.put("age", age);
+
+            if (u.getProfile().getGender() != null) {
+                ctx.put("gender", u.getProfile().getGender().name().toLowerCase());
+            }
+            if (u.getProfile().getHeightCm() != null) {
+                ctx.put("height", u.getProfile().getHeightCm());
+            }
+            if (u.getProfile().getWeightKg() != null) {
+                ctx.put("weight", u.getProfile().getWeightKg());
+            }
         }
 
-        // settings
-        if (u.getSettings() != null) {
-            Map<String, Object> settings = new HashMap<>();
-            settings.put("language", u.getSettings().getLanguage());
-            settings.put("timezone", u.getSettings().getTimezone());
-            settings.put("unitSystem", u.getSettings().getUnitSystem() == null ? null : u.getSettings().getUnitSystem().name());
-            ctx.put("settings", settings);
-        }
-
-        // goals
-        if (u.getGoals() != null) {
-            Map<String, Object> goals = new HashMap<>();
-            goals.put("dailySteps", u.getGoals().getDailySteps());
-            goals.put("dailyCaloriesIn", u.getGoals().getDailyCaloriesIn());
-            goals.put("dailyCaloriesOut", u.getGoals().getDailyCaloriesOut());
-            goals.put("dailyWaterMl", u.getGoals().getDailyWaterMl());
-            goals.put("targetWeightKg", u.getGoals().getTargetWeightKg());
-            ctx.put("goals", goals);
-        }
-
-        // today summary (DailyAggregate)
-        LocalDate today = LocalDate.now(safeZoneId(u));
-        DailyAggregateResponse todayAgg = summaryService.getByDate(userId, today);
-
-        Map<String, Object> todayMap = new HashMap<>();
-        todayMap.put("date", todayAgg.getDate());
-        todayMap.put("steps", todayAgg.getSteps());
-        todayMap.put("caloriesIn", todayAgg.getCaloriesIn());
-        todayMap.put("caloriesOut", todayAgg.getCaloriesOut());
-        todayMap.put("waterMl", todayAgg.getWaterMl());
-        todayMap.put("sleepMinutes", todayAgg.getSleepMinutes());
-        todayMap.put("highlights", todayAgg.getHighlights());
-        todayMap.put("summary", todayAgg.getSummary());
-        ctx.put("today", todayMap);
+        // Optional in AI schema; safe default.
+        ctx.put("medical_conditions", List.of());
 
         return ctx;
+    }
+
+    private Integer computeAge(Date birthday, ZoneId zoneId) {
+        if (birthday == null) return null;
+        LocalDate birthDate = birthday.toInstant().atZone(zoneId).toLocalDate();
+        LocalDate now = LocalDate.now(zoneId);
+        int years = Period.between(birthDate, now).getYears();
+        return years < 0 ? null : years;
     }
 
     private ZoneId safeZoneId(User u) {
