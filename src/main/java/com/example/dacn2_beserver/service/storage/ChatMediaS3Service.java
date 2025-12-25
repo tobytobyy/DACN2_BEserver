@@ -11,6 +11,8 @@ import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequ
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -27,6 +29,9 @@ public class ChatMediaS3Service {
 
     private final S3Presigner presigner;
 
+    @Value("${aws.region:ap-southeast-1}")
+    private String region;
+
     @Value("${aws.s3.chat.bucket}")
     private String bucket;
 
@@ -41,6 +46,13 @@ public class ChatMediaS3Service {
 
     @Value("${aws.s3.chat.max-bytes:5242880}")
     private long maxBytes;
+
+    /**
+     * Optional: if you use CloudFront/custom domain for public read.
+     * Example: https://cdn.example.com
+     */
+    @Value("${aws.s3.chat.public-base-url:}")
+    private String publicBaseUrl;
 
     private static String normalizePrefix(String p) {
         if (p == null || p.isBlank()) return "";
@@ -83,7 +95,7 @@ public class ChatMediaS3Service {
                 Instant.now().plusSeconds(putTtlSeconds)
         );
     }
-    
+
     public String presignGetUrl(String objectKey) {
         requireConfigured();
 
@@ -99,6 +111,36 @@ public class ChatMediaS3Service {
 
         PresignedGetObjectRequest presigned = presigner.presignGetObject(presignReq);
         return presigned.url().toString();
+    }
+
+    /**
+     * Build a public URL for the object (bucket must allow public read for this key).
+     * This is stable and does not expire like presigned GET.
+     */
+    public String publicUrl(String objectKey) {
+        requireConfigured();
+        if (objectKey == null || objectKey.isBlank()) throw new IllegalArgumentException("objectKey is required");
+
+        String base = (publicBaseUrl != null && !publicBaseUrl.isBlank())
+                ? publicBaseUrl.trim()
+                : "https://" + bucket + ".s3." + region + ".amazonaws.com";
+
+        if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+
+        // Keep "/" but encode spaces and special chars safely
+        String encodedKey = encodeS3Key(objectKey);
+        return base + "/" + encodedKey;
+    }
+
+    private String encodeS3Key(String key) {
+        // Encode each segment to avoid breaking slashes
+        String[] parts = key.split("/");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < parts.length; i++) {
+            if (i > 0) sb.append("/");
+            sb.append(URLEncoder.encode(parts[i], StandardCharsets.UTF_8));
+        }
+        return sb.toString();
     }
 
     public void assertOwnedByUser(String userId, String objectKey) {

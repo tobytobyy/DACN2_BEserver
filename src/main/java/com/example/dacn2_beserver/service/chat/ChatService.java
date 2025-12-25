@@ -1,19 +1,25 @@
 package com.example.dacn2_beserver.service.chat;
 
 import com.example.dacn2_beserver.dto.ai.*;
+import com.example.dacn2_beserver.dto.health.DailyAggregateResponse;
 import com.example.dacn2_beserver.exception.ApiException;
 import com.example.dacn2_beserver.exception.ErrorCode;
 import com.example.dacn2_beserver.model.ai.ChatMessage;
 import com.example.dacn2_beserver.model.ai.ChatSession;
 import com.example.dacn2_beserver.model.enums.ChatRole;
+import com.example.dacn2_beserver.model.user.User;
 import com.example.dacn2_beserver.repository.ChatMessageRepository;
 import com.example.dacn2_beserver.repository.ChatSessionRepository;
+import com.example.dacn2_beserver.repository.UserRepository;
 import com.example.dacn2_beserver.service.ai.AiChatClient;
+import com.example.dacn2_beserver.service.health.SummaryService;
 import com.example.dacn2_beserver.service.storage.ChatMediaS3Service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,11 +28,16 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ChatService {
 
+    private static final String DEFAULT_IMAGE_ONLY_MESSAGE = "Analyze this image";
+
     private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
 
     private final ChatMediaS3Service chatMediaS3Service;
     private final AiChatClient aiChatClient;
+
+    private final UserRepository userRepository;
+    private final SummaryService summaryService;
 
     public ChatSessionResponse createSession(String userId, CreateChatSessionRequest req) {
         String title = (req != null && req.getTitle() != null) ? req.getTitle().trim() : null;
@@ -77,7 +88,9 @@ public class ChatService {
         String imageUrl = null;
         if (hasImage) {
             chatMediaS3Service.assertOwnedByUser(userId, imageObjectKey);
-            imageUrl = chatMediaS3Service.presignGetUrl(imageObjectKey);
+
+            // Use public URL (stable, non-expiring)
+            imageUrl = chatMediaS3Service.publicUrl(imageObjectKey);
 
             userMeta.put("image", Map.of(
                     "objectKey", imageObjectKey,
@@ -87,6 +100,7 @@ public class ChatService {
 
         ChatMessage userMsg = ChatMessage.builder()
                 .sessionId(session.getId())
+                .userId(userId)
                 .role(ChatRole.USER)
                 .content(hasText ? content.trim() : null)
                 .meta(userMeta.isEmpty() ? null : userMeta)
@@ -94,13 +108,14 @@ public class ChatService {
                 .build();
         userMsg = chatMessageRepository.save(userMsg);
 
-        // history (optional) - lấy 100 gần nhất (đã sort asc)
+        // Build history (optional) - last 100 asc
         List<Map<String, Object>> history = chatMessageRepository.findTop100BySessionIdOrderByCreatedAtAsc(session.getId())
                 .stream()
                 .map(m -> {
                     Map<String, Object> mm = new HashMap<>();
-                    mm.put("role", m.getRole());
+                    mm.put("role", toAiRole(m.getRole()));
                     mm.put("content", m.getContent());
+
                     if (m.getMeta() != null && m.getMeta().get("image") instanceof Map<?, ?> im) {
                         Object url = ((Map<?, ?>) im).get("url");
                         if (url != null) mm.put("image_url", url);
@@ -108,13 +123,17 @@ public class ChatService {
                     return mm;
                 }).toList();
 
+        Map<String, Object> userContext = buildUserContext(userId);
+
+        String finalMessage = hasText ? content.trim() : DEFAULT_IMAGE_ONLY_MESSAGE;
+
         AiChatRequest aiReq = AiChatRequest.builder()
                 .sessionId(session.getId())
                 .userId(userId)
-                .message(hasText ? content.trim() : null)
+                .message(finalMessage)
                 .imageUrl(imageUrl)
                 .history(history)
-                .userContext(session.getContextSnapshot())
+                .userContext(userContext)
                 .build();
 
         AiChatResponse aiRes = aiChatClient.chat(aiReq);
@@ -129,6 +148,7 @@ public class ChatService {
 
         ChatMessage assistantMsg = ChatMessage.builder()
                 .sessionId(session.getId())
+                .userId(userId)
                 .role(ChatRole.ASSISTANT)
                 .content(aiRes != null ? aiRes.getContent() : null)
                 .meta(assistantMeta.isEmpty() ? null : assistantMeta)
@@ -136,7 +156,6 @@ public class ChatService {
                 .build();
         assistantMsg = chatMessageRepository.save(assistantMsg);
 
-        // bump session updatedAt
         session.setUpdatedAt(Instant.now());
         chatSessionRepository.save(session);
 
@@ -144,6 +163,76 @@ public class ChatService {
                 .userMessage(toMessageResponse(userMsg))
                 .assistantMessage(toMessageResponse(assistantMsg))
                 .build();
+    }
+
+    private String toAiRole(ChatRole role) {
+        if (role == null) return "user";
+        return role == ChatRole.ASSISTANT ? "assistant" : "user";
+    }
+
+    private Map<String, Object> buildUserContext(String userId) {
+        User u = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, "User not found"));
+
+        Map<String, Object> ctx = new HashMap<>();
+
+        // profile
+        if (u.getProfile() != null) {
+            Map<String, Object> profile = new HashMap<>();
+            profile.put("fullName", u.getProfile().getFullName());
+            profile.put("gender", u.getProfile().getGender() == null ? null : u.getProfile().getGender().name());
+            profile.put("birthday", u.getProfile().getBirthday());
+            profile.put("heightCm", u.getProfile().getHeightCm());
+            profile.put("weightKg", u.getProfile().getWeightKg());
+            ctx.put("profile", profile);
+        }
+
+        // settings
+        if (u.getSettings() != null) {
+            Map<String, Object> settings = new HashMap<>();
+            settings.put("language", u.getSettings().getLanguage());
+            settings.put("timezone", u.getSettings().getTimezone());
+            settings.put("unitSystem", u.getSettings().getUnitSystem() == null ? null : u.getSettings().getUnitSystem().name());
+            ctx.put("settings", settings);
+        }
+
+        // goals
+        if (u.getGoals() != null) {
+            Map<String, Object> goals = new HashMap<>();
+            goals.put("dailySteps", u.getGoals().getDailySteps());
+            goals.put("dailyCaloriesIn", u.getGoals().getDailyCaloriesIn());
+            goals.put("dailyCaloriesOut", u.getGoals().getDailyCaloriesOut());
+            goals.put("dailyWaterMl", u.getGoals().getDailyWaterMl());
+            goals.put("targetWeightKg", u.getGoals().getTargetWeightKg());
+            ctx.put("goals", goals);
+        }
+
+        // today summary (DailyAggregate)
+        LocalDate today = LocalDate.now(safeZoneId(u));
+        DailyAggregateResponse todayAgg = summaryService.getByDate(userId, today);
+
+        Map<String, Object> todayMap = new HashMap<>();
+        todayMap.put("date", todayAgg.getDate());
+        todayMap.put("steps", todayAgg.getSteps());
+        todayMap.put("caloriesIn", todayAgg.getCaloriesIn());
+        todayMap.put("caloriesOut", todayAgg.getCaloriesOut());
+        todayMap.put("waterMl", todayAgg.getWaterMl());
+        todayMap.put("sleepMinutes", todayAgg.getSleepMinutes());
+        todayMap.put("highlights", todayAgg.getHighlights());
+        todayMap.put("summary", todayAgg.getSummary());
+        ctx.put("today", todayMap);
+
+        return ctx;
+    }
+
+    private ZoneId safeZoneId(User u) {
+        try {
+            if (u.getSettings() != null && u.getSettings().getTimezone() != null) {
+                return ZoneId.of(u.getSettings().getTimezone());
+            }
+        } catch (Exception ignored) {
+        }
+        return ZoneId.of("UTC");
     }
 
     private ChatSessionResponse toSessionResponse(ChatSession s) {

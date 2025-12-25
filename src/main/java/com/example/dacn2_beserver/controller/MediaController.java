@@ -27,7 +27,7 @@ public class MediaController {
     private long chatGetTtlSeconds;
 
     /**
-     * Client (mobile) request presigned PUT to upload img to S3 chat bucket (private).
+     * Client (mobile) request presigned post to upload nutrition media to S3 nutrition bucket.
      * Return: objectKey + uploadUrl + expiresAt
      */
     @PostMapping(value = "/nutrition/presign-put", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -68,7 +68,7 @@ public class MediaController {
                 .objectKey(r.objectKey())
                 .uploadUrl(r.uploadUrl())
                 .expiresAt(r.expiresAt())
-                .publicUrl(null)
+                .publicUrl(chatMediaS3Service.publicUrl(r.objectKey()))
                 .build());
     }
 
