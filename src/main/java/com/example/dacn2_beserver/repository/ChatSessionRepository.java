@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface ChatSessionRepository extends MongoRepository<ChatSession, String> {
-    Optional<ChatSession> findByIdAndUserId(String id, String userId);
+    Optional<ChatSession> findByIdAndUserIdAndDeletedAtIsNull(String id, String userId);
 
-    List<ChatSession> findTop50ByUserIdOrderByUpdatedAtDesc(String userId);
+    List<ChatSession> findTop50ByUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(String userId);
 }

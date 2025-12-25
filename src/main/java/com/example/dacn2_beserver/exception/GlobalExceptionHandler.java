@@ -154,7 +154,7 @@ public class GlobalExceptionHandler {
     }
 
     // 8. Lỗi khi call AI server / Google Fit (WebClient / RestTemplate)
-    @ExceptionHandler({RestClientException.class, RestClientException.class})
+    @ExceptionHandler({RestClientException.class})
     public ResponseEntity<ErrorResponse> handleExternalService(Exception ex,
                                                                HttpServletRequest request) {
 

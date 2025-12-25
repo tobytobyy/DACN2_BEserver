@@ -19,13 +19,20 @@ public class FoodItem {
     @Id
     private String id;
 
+    @Indexed(unique = true)
+    private String code; // AI label, e.g. "apple_pie"
+
     @Indexed
     private String name;
 
-    private String brand;
     private List<String> tags;
 
-    private Double calories;
+    private Integer calories;
+
+    // macros (grams)
+    private Integer carbs;
+    private Integer fat;
+    private Integer protein;
 
     private Double servingSizeG;
     private String servingLabel;
