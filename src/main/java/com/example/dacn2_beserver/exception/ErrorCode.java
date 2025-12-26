@@ -45,8 +45,8 @@ public enum ErrorCode {
     GOOGLE_ALREADY_LINKED(HttpStatus.CONFLICT, "GOOGLE_ALREADY_LINKED", "This Google account is already linked"),
 
     RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "RATE_LIMITED", "Too many requests"),
-    
-    ;
+
+    NOT_FOUND(HttpStatus.NOT_FOUND, "NOT_FOUND", "Resource not found");
 
     private final HttpStatus httpStatus;
     private final String code;

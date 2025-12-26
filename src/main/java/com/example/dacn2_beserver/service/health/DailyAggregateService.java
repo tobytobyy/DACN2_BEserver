@@ -1,20 +1,18 @@
 package com.example.dacn2_beserver.service.health;
 
+import com.example.dacn2_beserver.model.health.DailyAggregate;
+import com.example.dacn2_beserver.model.user.User;
+import com.example.dacn2_beserver.repository.DailyAggregateRepository;
+import com.example.dacn2_beserver.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
-
-import org.springframework.stereotype.Service;
-
-import com.example.dacn2_beserver.model.health.DailyAggregate;
-import com.example.dacn2_beserver.model.user.User;
-import com.example.dacn2_beserver.repository.DailyAggregateRepository;
-import com.example.dacn2_beserver.repository.UserRepository;
-
-import lombok.RequiredArgsConstructor;
 
 /**
  * DailyAggregateService
@@ -40,17 +38,7 @@ public class DailyAggregateService {
     private final DailyAggregateRepository dailyAggregateRepository;
     private final UserRepository userRepository;
 
-    // ============================================================
-    // Water
-    // ============================================================
 
-    /**
-     * Cộng water vào DailyAggregate của ngày tương ứng.
-     *
-     * @param userId   user id
-     * @param loggedAt thời điểm uống
-     * @param deltaMl  số ml cộng thêm (dương). Nếu muốn hỗ trợ xoá log thì truyền số âm.
-     */
     public DailyAggregate addWater(String userId, Instant loggedAt, int deltaMl) {
         User user = requireUser(userId);
         ZoneId zoneId = userZone(user);
@@ -67,14 +55,22 @@ public class DailyAggregateService {
         return dailyAggregateRepository.save(agg);
     }
 
-    // ============================================================
-    // Sleep
-    // ============================================================
+    public DailyAggregate addCaloriesIn(String userId, Instant loggedAt, int deltaCaloriesIn) {
+        User user = requireUser(userId);
+        ZoneId zoneId = userZone(user);
 
-    /**
-     * Ghi nhận sleep session vào DailyAggregate.
-     * Quy ước: session được tính vào ngày "wake-up" (endAt).
-     */
+        LocalDate date = LocalDateTime.ofInstant(loggedAt, zoneId).toLocalDate();
+        DailyAggregate agg = findOrCreate(userId, date);
+
+        int current = nvl(agg.getCaloriesIn());
+        agg.setCaloriesIn(Math.max(0, current + deltaCaloriesIn));
+
+        touch(agg);
+
+        // Highlights/summary for calories will be added in a later step (N4).
+        return dailyAggregateRepository.save(agg);
+    }
+
     public DailyAggregate addSleep(
             String userId,
             Instant sleepEndAt,
@@ -125,8 +121,6 @@ public class DailyAggregateService {
 
     private User requireUser(String userId) {
         return userRepository.findById(userId).orElseThrow();
-        // Nếu bạn có exception chuẩn hơn:
-        // .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
     }
 
     private ZoneId userZone(User user) {
@@ -175,8 +169,6 @@ public class DailyAggregateService {
 
         agg.setHighlights(highlights);
 
-        // Summary: nếu summary đang null hoặc trước đó là water-only, ta có thể set/override nhẹ.
-        // Nếu sau này bạn muốn summary tổng hợp cả steps/sleep/water, ta sẽ refactor thành builder riêng.
         if (water >= goal) {
             setOrBlendSummary(agg, "Hôm nay bạn đã uống đủ nước. Tốt lắm!");
         } else {
@@ -215,14 +207,6 @@ public class DailyAggregateService {
     // ============================================================
     // Summary blending (MVP)
     // ============================================================
-
-    /**
-     * MVP: summary là 1 string, có thể bị cả water và sleep set.
-     * Cách đơn giản: nếu summary trống -> set; nếu đã có -> giữ summary cũ (đỡ overwrite),
-     * hoặc nối thêm câu nếu muốn.
-     * <p>
-     * Hiện tại mình chọn: nếu null/blank -> set, else -> giữ nguyên (an toàn).
-     */
     private void setOrBlendSummary(DailyAggregate agg, String newSentence) {
         if (newSentence == null || newSentence.isBlank()) return;
 
@@ -231,21 +215,12 @@ public class DailyAggregateService {
             agg.setSummary(newSentence);
             return;
         }
-
-        // Nếu bạn muốn nối thêm: uncomment dưới
-        // if (!current.contains(newSentence)) agg.setSummary(current + " " + newSentence);
     }
 
     private List<String> safeCopy(List<String> src) {
         return src == null ? new ArrayList<>() : new ArrayList<>(src);
     }
-
-    // ============================================================
-    //===========================================================
-    /**
- * Cộng workout vào DailyAggregate của ngày tương ứng (theo timezone user).
- * Quy ước MVP: tính vào ngày kết thúc workout (endAt).
- */
+    
     public DailyAggregate addWorkout(String userId, Instant workoutEndAt, int steps, double distanceKm, int caloriesOut) {
         User user = requireUser(userId);
         ZoneId zoneId = userZone(user);

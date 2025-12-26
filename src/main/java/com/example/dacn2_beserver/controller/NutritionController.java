@@ -1,12 +1,12 @@
 package com.example.dacn2_beserver.controller;
 
-import com.example.dacn2_beserver.dto.ai.AiFoodPredictResponse;
 import com.example.dacn2_beserver.dto.common.ApiResponse;
 import com.example.dacn2_beserver.dto.nutrition.NutritionAnalyzeRequest;
+import com.example.dacn2_beserver.dto.nutrition.NutritionAnalyzeResponse;
 import com.example.dacn2_beserver.exception.ApiException;
 import com.example.dacn2_beserver.exception.ErrorCode;
 import com.example.dacn2_beserver.security.AuthPrincipal;
-import com.example.dacn2_beserver.service.ai.AiFoodClient;
+import com.example.dacn2_beserver.service.nutrition.NutritionAnalyzeService;
 import com.example.dacn2_beserver.service.storage.NutritionS3Service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -22,10 +22,10 @@ import org.springframework.web.bind.annotation.RestController;
 public class NutritionController {
 
     private final NutritionS3Service nutritionS3Service;
-    private final AiFoodClient aiFoodClient;
+    private final NutritionAnalyzeService nutritionAnalyzeService;
 
     @PostMapping(value = "/analyze", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ApiResponse<AiFoodPredictResponse> analyze(
+    public ApiResponse<NutritionAnalyzeResponse> analyze(
             @AuthenticationPrincipal AuthPrincipal principal,
             @RequestBody NutritionAnalyzeRequest req
     ) {
@@ -39,7 +39,7 @@ public class NutritionController {
         String imageUrl = nutritionS3Service.presignGetUrl(objectKey);
 
         try {
-            return ApiResponse.ok(aiFoodClient.predictFoodByUrl(imageUrl));
+            return ApiResponse.ok(nutritionAnalyzeService.analyzeByImageUrl(imageUrl));
         } finally {
             // Delete immediately after AI returns (best effort)
             nutritionS3Service.deleteObjectBestEffort(objectKey);

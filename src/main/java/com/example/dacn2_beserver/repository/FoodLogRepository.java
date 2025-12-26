@@ -5,7 +5,10 @@ import org.springframework.data.mongodb.repository.MongoRepository;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 public interface FoodLogRepository extends MongoRepository<FoodLog, String> {
     List<FoodLog> findAllByUserIdAndLoggedAtBetweenOrderByLoggedAtDesc(String userId, Instant from, Instant to);
+
+    Optional<FoodLog> findByIdAndUserId(String id, String userId);
 }
