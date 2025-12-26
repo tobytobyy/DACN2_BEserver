@@ -35,6 +35,8 @@ public class DailyAggregateService {
     private static final String DEFAULT_TZ = "UTC";
     private static final int DEFAULT_WATER_GOAL_ML = 2000;
     private static final int DEFAULT_SLEEP_GOAL_MIN = 420; // 7h
+    private static final int DEFAULT_CALORIES_IN_GOAL = 2000;
+    private static final int DEFAULT_CALORIES_OUT_GOAL = 500;
     private final DailyAggregateRepository dailyAggregateRepository;
     private final UserRepository userRepository;
 
@@ -65,7 +67,10 @@ public class DailyAggregateService {
         int current = nvl(agg.getCaloriesIn());
         agg.setCaloriesIn(Math.max(0, current + deltaCaloriesIn));
 
+
         touch(agg);
+
+        applyCaloriesInHighlights(user, agg);
 
         // Highlights/summary for calories will be added in a later step (N4).
         return dailyAggregateRepository.save(agg);
@@ -205,6 +210,66 @@ public class DailyAggregateService {
     }
 
     // ============================================================
+    // Highlights / Summary: CALORIES IN
+    // ============================================================
+    private void applyCaloriesInHighlights(User user, DailyAggregate agg) {
+        int caloriesIn = nvl(agg.getCaloriesIn());
+
+        int goal = DEFAULT_CALORIES_IN_GOAL;
+        if (user.getGoals() != null && user.getGoals().getDailyCaloriesIn() != null && user.getGoals().getDailyCaloriesIn() > 0) {
+            goal = user.getGoals().getDailyCaloriesIn();
+        }
+
+        List<String> highlights = safeCopy(agg.getHighlights());
+        highlights.removeIf(s -> s != null && s.startsWith("Calories In:"));
+
+        if (caloriesIn <= 0) {
+            highlights.add("Calories In: No food logged");
+            setOrBlendSummary(agg, "Hôm nay bạn chưa ghi nhận bữa ăn nào.");
+        } else if (caloriesIn <= goal) {
+            int remaining = Math.max(0, goal - caloriesIn);
+            highlights.add("Calories In: " + caloriesIn + "/" + goal + " kcal ✅");
+            if (remaining == 0) {
+                setOrBlendSummary(agg, "Bạn đã đạt mục tiêu calories nạp vào hôm nay.");
+            } else {
+                setOrBlendSummary(agg, "Bạn còn khoảng " + remaining + " kcal để đạt mục tiêu calories nạp vào.");
+            }
+        } else {
+            int exceeded = caloriesIn - goal;
+            highlights.add("Calories In: Exceeded by " + exceeded + " kcal ⚠️");
+            setOrBlendSummary(agg, "Bạn đã vượt mục tiêu calories nạp vào khoảng " + exceeded + " kcal. Cân nhắc điều chỉnh bữa ăn nhé.");
+        }
+
+        agg.setHighlights(highlights);
+    }
+
+    // ============================================================
+    // Highlights / Summary: CALORIES OUT
+    // ============================================================
+    private void applyCaloriesOutHighlights(User user, DailyAggregate agg) {
+        int caloriesOut = nvl(agg.getCaloriesOut());
+
+        int goal = DEFAULT_CALORIES_OUT_GOAL;
+        if (user.getGoals() != null && user.getGoals().getDailyCaloriesOut() != null && user.getGoals().getDailyCaloriesOut() > 0) {
+            goal = user.getGoals().getDailyCaloriesOut();
+        }
+
+        List<String> highlights = safeCopy(agg.getHighlights());
+        highlights.removeIf(s -> s != null && s.startsWith("Calories Out:"));
+
+        if (caloriesOut >= goal) {
+            highlights.add("Calories Out: Reached goal ✅");
+            setOrBlendSummary(agg, "Bạn đã đạt mục tiêu vận động hôm nay. Tốt lắm!");
+        } else {
+            int remaining = Math.max(0, goal - caloriesOut);
+            highlights.add("Calories Out: Need " + remaining + " kcal to reach goal");
+            setOrBlendSummary(agg, "Bạn cần vận động thêm khoảng " + remaining + " kcal để đạt mục tiêu.");
+        }
+
+        agg.setHighlights(highlights);
+    }
+
+    // ============================================================
     // Summary blending (MVP)
     // ============================================================
     private void setOrBlendSummary(DailyAggregate agg, String newSentence) {
@@ -215,12 +280,25 @@ public class DailyAggregateService {
             agg.setSummary(newSentence);
             return;
         }
+
+        // Avoid duplicate sentences
+        if (current.contains(newSentence)) return;
+
+        String sep = current.endsWith(".") ? " " : ". ";
+        String blended = current + sep + newSentence;
+
+        // MVP: keep summary reasonably short
+        if (blended.length() > 400) {
+            blended = blended.substring(0, 400);
+        }
+
+        agg.setSummary(blended);
     }
 
     private List<String> safeCopy(List<String> src) {
         return src == null ? new ArrayList<>() : new ArrayList<>(src);
     }
-    
+
     public DailyAggregate addWorkout(String userId, Instant workoutEndAt, int steps, double distanceKm, int caloriesOut) {
         User user = requireUser(userId);
         ZoneId zoneId = userZone(user);
@@ -239,6 +317,7 @@ public class DailyAggregateService {
         highlights.removeIf(s -> s != null && s.startsWith("Workout:"));
         highlights.add("Workout: +" + Math.max(0, steps) + " steps, +" + String.format("%.2f", Math.max(0.0, distanceKm)) + " km");
         agg.setHighlights(highlights);
+        applyCaloriesOutHighlights(user, agg);
 
         return dailyAggregateRepository.save(agg);
     }
