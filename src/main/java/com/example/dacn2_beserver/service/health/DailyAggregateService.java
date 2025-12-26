@@ -72,7 +72,6 @@ public class DailyAggregateService {
 
         applyCaloriesInHighlights(user, agg);
 
-        // Highlights/summary for calories will be added in a later step (N4).
         return dailyAggregateRepository.save(agg);
     }
 

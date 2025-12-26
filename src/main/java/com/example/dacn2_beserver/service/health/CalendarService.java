@@ -4,11 +4,14 @@ import com.example.dacn2_beserver.dto.health.CalendarDaySummaryResponse;
 import com.example.dacn2_beserver.exception.ApiException;
 import com.example.dacn2_beserver.exception.ErrorCode;
 import com.example.dacn2_beserver.model.health.DailyAggregate;
+import com.example.dacn2_beserver.model.user.User;
 import com.example.dacn2_beserver.repository.DailyAggregateRepository;
+import com.example.dacn2_beserver.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 
 @Service
@@ -16,13 +19,19 @@ import java.util.List;
 public class CalendarService {
 
     private final DailyAggregateRepository dailyAggregateRepository;
+    private final UserRepository userRepository;
 
     public CalendarDaySummaryResponse getDay(String userId, LocalDate date) {
         if (date == null) {
             throw new ApiException(ErrorCode.VALIDATION_ERROR, "date is required");
         }
 
-        LocalDate today = LocalDate.now();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, "User not found"));
+
+        ZoneId zoneId = safeZoneId(user);
+        LocalDate today = LocalDate.now(zoneId);
+
         boolean isFuture = date.isAfter(today);
 
         // For future days: return default zeros, no DB query needed.
@@ -30,7 +39,7 @@ public class CalendarService {
             return emptyDay(date, true);
         }
 
-        DailyAggregate a = dailyAggregateRepository.findByUserIdAndDate(userId, date).orElse(null); // supported :contentReference[oaicite:1]{index=1}
+        DailyAggregate a = dailyAggregateRepository.findByUserIdAndDate(userId, date).orElse(null);
         if (a == null) {
             return emptyDay(date, false);
         }
@@ -51,6 +60,16 @@ public class CalendarService {
                 .summary(a.getSummary())
                 .isFuture(false)
                 .build();
+    }
+
+    private ZoneId safeZoneId(User user) {
+        try {
+            if (user.getSettings() != null && user.getSettings().getTimezone() != null) {
+                return ZoneId.of(user.getSettings().getTimezone());
+            }
+        } catch (Exception ignored) {
+        }
+        return ZoneId.of("UTC");
     }
 
     private CalendarDaySummaryResponse emptyDay(LocalDate date, boolean isFuture) {

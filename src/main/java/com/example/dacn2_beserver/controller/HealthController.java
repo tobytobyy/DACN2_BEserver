@@ -1,5 +1,6 @@
 package com.example.dacn2_beserver.controller;
 
+import com.example.dacn2_beserver.dto.common.ApiResponse;
 import com.example.dacn2_beserver.dto.health.*;
 import com.example.dacn2_beserver.security.AuthPrincipal;
 import com.example.dacn2_beserver.service.health.CalendarService;
@@ -26,69 +27,70 @@ public class HealthController {
     private final SleepService sleepService;
     private final CalendarService calendarService;
 
-
     // -------- WATER --------
 
     @PostMapping("/water")
-    public WaterLogResponse createWater(
+    public ApiResponse<WaterLogResponse> createWater(
             @AuthenticationPrincipal AuthPrincipal principal,
             @Valid @RequestBody CreateWaterLogRequest req
     ) {
-        return waterService.create(principal.userId(), req);
+        return ApiResponse.ok(waterService.create(principal.userId(), req));
     }
 
     @GetMapping("/water")
-    public List<WaterLogResponse> listWater(
+    public ApiResponse<List<WaterLogResponse>> listWater(
             @AuthenticationPrincipal AuthPrincipal principal,
             @RequestParam Instant from,
             @RequestParam Instant to
     ) {
-        return waterService.listResponses(principal.userId(), from, to);
+        return ApiResponse.ok(waterService.listResponses(principal.userId(), from, to));
     }
 
     // -------- SLEEP --------
 
     @PostMapping("/sleep")
-    public SleepSessionResponse createSleep(
+    public ApiResponse<SleepSessionResponse> createSleep(
             @AuthenticationPrincipal AuthPrincipal principal,
             @Valid @RequestBody CreateSleepSessionRequest req
     ) {
-        return sleepService.create(principal.userId(), req);
+        return ApiResponse.ok(sleepService.create(principal.userId(), req));
     }
 
     @GetMapping("/sleep")
-    public List<SleepSessionResponse> listSleep(
+    public ApiResponse<List<SleepSessionResponse>> listSleep(
             @AuthenticationPrincipal AuthPrincipal principal,
             @RequestParam Instant from,
             @RequestParam Instant to
     ) {
-        return sleepService.listResponses(principal.userId(), from, to);
+        return ApiResponse.ok(sleepService.listResponses(principal.userId(), from, to));
     }
 
     // -------- SUMMARY --------
 
     @GetMapping("/summary/{date}")
-    public DailyAggregateResponse summaryByDate(
+    public ApiResponse<DailyAggregateResponse> summaryByDate(
             @AuthenticationPrincipal AuthPrincipal principal,
             @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date
     ) {
-        return summaryService.getByDate(principal.userId(), date);
+        return ApiResponse.ok(summaryService.getByDate(principal.userId(), date));
     }
 
     @GetMapping("/summary")
-    public List<DailyAggregateResponse> summaryRange(
+    public ApiResponse<List<DailyAggregateResponse>> summaryRange(
             @AuthenticationPrincipal AuthPrincipal principal,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) {
-        return summaryService.getRange(principal.userId(), from, to);
+        return ApiResponse.ok(summaryService.getRange(principal.userId(), from, to));
     }
 
+    // -------- CALENDAR (single-day for calendar click) --------
+
     @GetMapping("/calendar")
-    public CalendarDaySummaryResponse calendarDay(
+    public ApiResponse<CalendarDaySummaryResponse> calendarDay(
             @AuthenticationPrincipal AuthPrincipal principal,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date
     ) {
-        return calendarService.getDay(principal.userId(), date);
+        return ApiResponse.ok(calendarService.getDay(principal.userId(), date));
     }
 }
