@@ -2,6 +2,7 @@ package com.example.dacn2_beserver.controller;
 
 import com.example.dacn2_beserver.dto.health.*;
 import com.example.dacn2_beserver.security.AuthPrincipal;
+import com.example.dacn2_beserver.service.health.CalendarService;
 import com.example.dacn2_beserver.service.health.SleepService;
 import com.example.dacn2_beserver.service.health.SummaryService;
 import com.example.dacn2_beserver.service.health.WaterService;
@@ -23,6 +24,8 @@ public class HealthController {
     private final WaterService waterService;
     private final SummaryService summaryService;
     private final SleepService sleepService;
+    private final CalendarService calendarService;
+
 
     // -------- WATER --------
 
@@ -79,5 +82,13 @@ public class HealthController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) {
         return summaryService.getRange(principal.userId(), from, to);
+    }
+
+    @GetMapping("/calendar")
+    public CalendarDaySummaryResponse calendarDay(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date
+    ) {
+        return calendarService.getDay(principal.userId(), date);
     }
 }
