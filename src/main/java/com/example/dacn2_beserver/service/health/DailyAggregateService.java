@@ -110,13 +110,26 @@ public class DailyAggregateService {
     // ============================================================
 
     private DailyAggregate findOrCreate(String userId, LocalDate date) {
+        DailyAggregate agg = DailyAggregate.builder()
+                .userId(userId)
+                .date(date)
+                // Default numeric fields to 0 for stability
+                .steps(0)
+                .distanceKm(0.0)
+                .waterMl(0)
+                .sleepMinutes(0)
+                .deepMinutes(0)
+                .remMinutes(0)
+                .lightMinutes(0)
+                .awakeMinutes(0)
+                .caloriesIn(0)
+                .caloriesOut(0)
+                // Default collections to empty to avoid NPE
+                .highlights(new java.util.ArrayList<>())
+                .summary(null)
+                .build();
         return dailyAggregateRepository.findByUserIdAndDate(userId, date)
-                .orElseGet(() -> DailyAggregate.builder()
-                        .userId(userId)
-                        .date(date)
-                        .createdAt(Instant.now())
-                        .updatedAt(Instant.now())
-                        .build());
+                .orElseGet(() -> agg);
     }
 
     private void touch(DailyAggregate agg) {

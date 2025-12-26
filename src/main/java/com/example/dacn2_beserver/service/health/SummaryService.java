@@ -28,28 +28,29 @@ public class SummaryService {
                 .toList();
     }
 
-    private DailyAggregateResponse toResponse(DailyAggregate a) {
+    private DailyAggregateResponse toResponse(DailyAggregate agg) {
         return DailyAggregateResponse.builder()
-                .id(a.getId())
-                .userId(a.getUserId())
-                .date(a.getDate())
-                .steps(a.getSteps())
-                .distanceKm(a.getDistanceKm())
-                .caloriesIn(a.getCaloriesIn())
-                .caloriesOut(a.getCaloriesOut())
-                .avgHeartRate(a.getAvgHeartRate())
-                .maxHeartRate(a.getMaxHeartRate())
-                .minHeartRate(a.getMinHeartRate())
-                .waterMl(a.getWaterMl())
-                .sleepMinutes(a.getSleepMinutes())
-                .deepMinutes(a.getDeepMinutes())
-                .remMinutes(a.getRemMinutes())
-                .lightMinutes(a.getLightMinutes())
-                .awakeMinutes(a.getAwakeMinutes())
-                .highlights(a.getHighlights())
-                .summary(a.getSummary())
-                .createdAt(a.getCreatedAt())
-                .updatedAt(a.getUpdatedAt())
+                .date(agg.getDate())
+                .steps(nvl(agg.getSteps()))
+                .distanceKm(nvl(agg.getDistanceKm()))
+                .waterMl(nvl(agg.getWaterMl()))
+                .sleepMinutes(nvl(agg.getSleepMinutes()))
+                .deepMinutes(nvl(agg.getDeepMinutes()))
+                .remMinutes(nvl(agg.getRemMinutes()))
+                .lightMinutes(nvl(agg.getLightMinutes()))
+                .awakeMinutes(nvl(agg.getAwakeMinutes()))
+                .caloriesIn(nvl(agg.getCaloriesIn()))
+                .caloriesOut(nvl(agg.getCaloriesOut()))
+                .highlights(agg.getHighlights() != null ? agg.getHighlights() : java.util.List.of())
+                .summary(agg.getSummary())
                 .build();
+    }
+
+    private int nvl(Integer v) {
+        return v == null ? 0 : v;
+    }
+
+    private double nvl(Double v) {
+        return v == null ? 0.0 : v;
     }
 }

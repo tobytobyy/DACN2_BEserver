@@ -11,4 +11,6 @@ public interface FoodLogRepository extends MongoRepository<FoodLog, String> {
     List<FoodLog> findAllByUserIdAndLoggedAtBetweenOrderByLoggedAtDesc(String userId, Instant from, Instant to);
 
     Optional<FoodLog> findByIdAndUserId(String id, String userId);
+
+    Optional<FoodLog> findFirstByUserIdAndMetaIdempotencyKey(String userId, String idempotencyKey);
 }
